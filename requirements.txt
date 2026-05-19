@@ -1,0 +1,7 @@
+shapely
+svgwrite
+cairosvg
+overpy
+lxml
+flask
+pypdf
