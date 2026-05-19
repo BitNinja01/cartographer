@@ -21,13 +21,15 @@ class CartographerPlugin(PinSheetPlugin):
         from cartographer.screens.hole_view import HoleViewScreen
         from cartographer.screens.course_gallery import CourseGalleryScreen
         from cartographer.screens.geometry_setup import GeometrySetupScreen
-        return [HoleViewScreen, CourseGalleryScreen, GeometrySetupScreen]
+        from cartographer.screens.pdf_export import PDFExportScreen
+        return [HoleViewScreen, CourseGalleryScreen, GeometrySetupScreen, PDFExportScreen]
 
     def bindings(self) -> list:
         return [
             ("RoundDetailScreen", "h", "hole_view", "Hole View"),
             ("CourseDetailScreen", "h", "hole_view", "Hole View"),
             ("CourseDetailScreen", "g", "geometry", "Geometry"),
+            ("CourseDetailScreen", "p", "pdf_export", "Export PDF"),
         ]
 
     def css(self) -> str:
