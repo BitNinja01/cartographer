@@ -1,7 +1,6 @@
 """Flask server for the cartographer visual tagging UI."""
 from __future__ import annotations
 
-import json
 import threading
 import webbrowser
 from pathlib import Path
