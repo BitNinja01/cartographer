@@ -26,14 +26,12 @@ def _svg_to_pdf_bytes(svg_string: str) -> bytes:
 
 def generate_book(
     course_name: str,
-    tee: str,
     output_dir: Path,
     settings: dict | None = None,
 ) -> None:
     """Generate a complete yardage book for a course.
 
     course_name: must match a key in courses_geo.json and courses.json.
-    tee: tee name to use for yardages (e.g. "white").
     output_dir: directory where booklet PDFs will be written.
     settings: plugin settings dict.
     """
@@ -126,6 +124,7 @@ def generate_book(
     # Combine into 5 saddle-stitch booklets (pairs of narrow pages side by side)
     booklet_pairs = [
         (0, 1), (2, 3), (4, 5), (6, 7), (8, 9),
+        (10, 11), (12, 13), (14, 15), (16, 17), (18, 19),
     ]
     for booklet_idx, (left_idx, right_idx) in enumerate(booklet_pairs, start=1):
         writer = PdfWriter()
@@ -144,7 +143,6 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Generate a PinSheet yardage book PDF")
     parser.add_argument("course_name", help="Course name (must match courses.json)")
-    parser.add_argument("--tee", default="white", help="Tee to use for yardages")
     parser.add_argument("--output", default=".", help="Output directory")
     args = parser.parse_args()
-    generate_book(args.course_name, args.tee, Path(args.output).expanduser())
+    generate_book(args.course_name, Path(args.output).expanduser())
