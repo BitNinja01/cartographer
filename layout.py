@@ -70,6 +70,19 @@ def compose_page(
     circle_cx = PAGE_W - MARGIN - inset
     circle_cy = MARGIN + inset
     
+    # White box behind hole number + par pair
+    box_x = circle_cx - HOLE_NUMBER_CIRCLE_RADIUS - 6
+    box_y = circle_cy - HOLE_NUMBER_CIRCLE_RADIUS - 4
+    box_w = HOLE_NUMBER_CIRCLE_RADIUS * 2 + 12
+    box_h = HOLE_NUMBER_CIRCLE_RADIUS * 2 + 14 + 14 + 6
+    dwg.add(dwg.rect(
+        insert=(box_x, box_y),
+        size=(box_w, box_h),
+        fill="white",
+        stroke="none",
+        rx=4, ry=4,
+    ))
+    
     # Circle with hole number inside
     dwg.add(dwg.circle(
         center=(circle_cx, circle_cy),
@@ -80,11 +93,13 @@ def compose_page(
     ))
     dwg.add(dwg.text(
         str(hole_num),
-        insert=(circle_cx, circle_cy + 8),  # +8 for vertical centering
-        font_size="24pt",
-        font_family="JetBrainsMono, monospace",
+        insert=(circle_cx, circle_cy),
+        font_size="16pt",
+        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
         fill="#212121",
         text_anchor="middle",
+        dominant_baseline="central",
+        font_weight="bold",
     ))
     
     # Par number centered below circle
@@ -93,8 +108,8 @@ def compose_page(
         f"Par {par}",
         insert=(circle_cx, par_y),
         font_size="9pt",
-        font_family="JetBrainsMono, monospace",
-        fill="#555",
+        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
+        fill="#212121",
         text_anchor="middle",
     ))
 
@@ -105,21 +120,22 @@ def compose_page(
     )
 
     bg_width = 80
-    bg_height = 11
-    y_tee = MARGIN + TOP_HALF_H - 15 - (len(sorted_tees) * 13)
+    total_tee_h = len(sorted_tees) * 13
+    y_tee_start = MARGIN + TOP_HALF_H - 15 - total_tee_h
+    dwg.add(dwg.rect(
+        insert=(PAGE_W - MARGIN - 10 - bg_width, y_tee_start - 9),
+        size=(bg_width, total_tee_h + 2),
+        fill="white",
+        stroke="none",
+    ))
+    y_tee = y_tee_start
     for tee_name, yardage in sorted_tees:
         col = TEE_COLOUR_MAP.get(tee_name, "#333")
-        dwg.add(dwg.rect(
-            insert=(PAGE_W - MARGIN - 10 - bg_width, y_tee - 9),
-            size=(bg_width, bg_height),
-            fill="white",
-            stroke="none",
-        ))
         dwg.add(dwg.text(
             f"{tee_name.upper()} : {yardage}",
             insert=(PAGE_W - MARGIN - 10, y_tee),
             font_size="9pt",
-            font_family="JetBrainsMono, monospace",
+            font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
             fill=col,
             text_anchor="end",
         ))
@@ -210,7 +226,7 @@ def _render_slot(
                 label,
                 insert=(bx + box_w / 2, by + 20),
                 font_size="9pt",
-                font_family="monospace",
+                font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
                 fill="#555",
                 text_anchor="middle",
             ))
@@ -220,7 +236,7 @@ def _render_slot(
                 value,
                 insert=(bx + box_w / 2, by + box_h / 2 + 5),
                 font_size="11pt",
-                font_family="monospace",
+                font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
                 fill="#212121",
                 text_anchor="middle",
             ))
@@ -259,7 +275,7 @@ def compose_front_page(
         insert=(PAGE_W / 2, name_y),
         font_size="24pt",
         font_weight="bold",
-        font_family="JetBrainsMono, monospace",
+        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
         fill="#212121",
         text_anchor="middle",
     ))
@@ -276,7 +292,7 @@ def compose_front_page(
             loc_str,
             insert=(PAGE_W / 2, name_y + 36),
             font_size="11pt",
-            font_family="JetBrainsMono, monospace",
+            font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
             fill="#555",
             text_anchor="middle",
         ))
@@ -286,7 +302,7 @@ def compose_front_page(
         f"Par {total_par}",
         insert=(PAGE_W / 2, par_y),
         font_size="14pt",
-        font_family="JetBrainsMono, monospace",
+        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
         fill="#212121",
         text_anchor="middle",
     ))
@@ -309,7 +325,7 @@ def compose_front_page(
                 f"{tee_name.upper()} : {yardage}",
                 insert=(PAGE_W / 2, table_y),
                 font_size="11pt",
-                font_family="JetBrainsMono, monospace",
+                font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
                 fill="#212121",
                 text_anchor="middle",
             ))
@@ -339,7 +355,7 @@ def compose_back_page(
         "PinSheet",
         insert=(PAGE_W / 2, HALF_PAGE_H - MARGIN - 20),
         font_size="18pt",
-        font_family="JetBrainsMono, monospace",
+        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
         fill="#212121",
         text_anchor="middle",
     ))
@@ -362,7 +378,7 @@ def compose_chart_page(
         insert=(PAGE_W / 2, MARGIN + 35),
         font_size="14pt",
         font_weight="bold",
-        font_family="JetBrainsMono, monospace",
+        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
         fill="#212121",
         text_anchor="middle",
     ))
@@ -395,7 +411,7 @@ def compose_chart_page(
                     headers[col],
                     insert=(x + cw / 2, y + rh / 2 + 4),
                     font_size="11pt",
-                    font_family="JetBrainsMono, monospace",
+                    font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
                     fill="#555",
                     text_anchor="middle",
                 ))
@@ -474,6 +490,19 @@ def compose_hole_top_page(
     circle_cx = PAGE_W - MARGIN - inset
     circle_cy = MARGIN + inset
 
+    # White box behind hole number + par pair
+    box_x = circle_cx - HOLE_NUMBER_CIRCLE_RADIUS - 6
+    box_y = circle_cy - HOLE_NUMBER_CIRCLE_RADIUS - 4
+    box_w = HOLE_NUMBER_CIRCLE_RADIUS * 2 + 12
+    box_h = HOLE_NUMBER_CIRCLE_RADIUS * 2 + 14 + 14 + 6
+    dwg.add(dwg.rect(
+        insert=(box_x, box_y),
+        size=(box_w, box_h),
+        fill="white",
+        stroke="none",
+        rx=4, ry=4,
+    ))
+
     dwg.add(dwg.circle(
         center=(circle_cx, circle_cy),
         r=HOLE_NUMBER_CIRCLE_RADIUS,
@@ -483,11 +512,13 @@ def compose_hole_top_page(
     ))
     dwg.add(dwg.text(
         str(hole_num),
-        insert=(circle_cx, circle_cy + 8),
-        font_size="24pt",
-        font_family="JetBrainsMono, monospace",
+        insert=(circle_cx, circle_cy),
+        font_size="16pt",
+        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
         fill="#212121",
         text_anchor="middle",
+        dominant_baseline="central",
+        font_weight="bold",
     ))
 
     par_y = circle_cy + HOLE_NUMBER_CIRCLE_RADIUS + 14
@@ -495,8 +526,8 @@ def compose_hole_top_page(
         f"Par {par}",
         insert=(circle_cx, par_y),
         font_size="9pt",
-        font_family="JetBrainsMono, monospace",
-        fill="#555",
+        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
+        fill="#212121",
         text_anchor="middle",
     ))
 
@@ -505,14 +536,23 @@ def compose_hole_top_page(
         key=lambda x: x[1]
     )
 
-    y_tee = MARGIN + HALF_PAGE_H - 2 * MARGIN - 15 - (len(sorted_tees) * 13)
+    bg_width = 80
+    total_tee_h = len(sorted_tees) * 13
+    y_tee_start = MARGIN + HALF_PAGE_H - 2 * MARGIN - 15 - total_tee_h
+    dwg.add(dwg.rect(
+        insert=(PAGE_W - MARGIN - 10 - bg_width, y_tee_start - 9),
+        size=(bg_width, total_tee_h + 2),
+        fill="white",
+        stroke="none",
+    ))
+    y_tee = y_tee_start
     for tee_name, yardage in sorted_tees:
         col = TEE_COLOUR_MAP.get(tee_name, "#333")
         dwg.add(dwg.text(
             f"{tee_name.upper()} : {yardage}",
             insert=(PAGE_W - MARGIN - 10, y_tee),
             font_size="9pt",
-            font_family="JetBrainsMono, monospace",
+            font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
             fill=col,
             text_anchor="end",
         ))

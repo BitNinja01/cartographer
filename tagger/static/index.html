@@ -180,7 +180,9 @@
           layers[id] = layer;
           layer.on('click', e => {
             if (scaleMode) return;
-            
+            const ftype = feature.properties.type;
+            if (ftype === 'water' || ftype === 'path') return;  // course-wide, not per-hole
+
             if (featureAssignments[id]) {
               delete featureAssignments[id];
               map.addLayer(layer);
@@ -218,27 +220,30 @@
       const div = document.createElement('div');
       div.className = 'feature-item' + (hole ? ' assigned' : '');
       const holeBadge = hole ? `<span style="display:inline-block;padding:1px 8px;background:#4CAF50;color:white;border-radius:3px;font-size:10px;margin-right:6px;">H${hole}</span>` : '';
-      div.innerHTML = `${holeBadge}<span class="type-badge type-${type}">${type}</span> <small style="color:#888">#${id}</small>`;
-      div.onclick = () => {
-        if (hole) {
-          delete featureAssignments[id];
-          if (layers[id]) {
-            map.addLayer(layers[id]);
-          }
-          renderFeatureList(allFeatures);
-        } else {
-          if (currentHole >= 1 && currentHole <= 18) {
-            featureAssignments[id] = currentHole;
-            if (layers[id]) {
-              map.removeLayer(layers[id]);
-            }
+      const wideBadge = (type === 'water' || type === 'path') ? `<span style="display:inline-block;padding:1px 8px;background:#1565C0;color:white;border-radius:3px;font-size:10px;margin-right:6px;">CW</span>` : '';
+      div.innerHTML = `${holeBadge}${wideBadge}<span class="type-badge type-${type}">${type}</span> <small style="color:#888">#${id}</small>`;
+
+      if (type === 'water' || type === 'path') {
+        div.style.opacity = '0.7';
+        div.style.cursor = 'default';
+      } else {
+        div.onclick = () => {
+          if (hole) {
+            delete featureAssignments[id];
+            if (layers[id]) map.addLayer(layers[id]);
             renderFeatureList(allFeatures);
+          } else {
+            if (currentHole >= 1 && currentHole <= 18) {
+              featureAssignments[id] = currentHole;
+              if (layers[id]) map.removeLayer(layers[id]);
+              renderFeatureList(allFeatures);
+            }
+            if (layers[id]) {
+              map.setView(layers[id].getBounds ? layers[id].getBounds().getCenter() : layers[id].getLatLng(), 18);
+            }
           }
-          if (layers[id]) {
-            map.setView(layers[id].getBounds ? layers[id].getBounds().getCenter() : layers[id].getLatLng(), 18);
-          }
-        }
-      };
+        };
+      }
       list.appendChild(div);
     });
   }
@@ -329,15 +334,31 @@
     }
 
     const holes = {};
+    for (let h = 1; h <= 18; h++) {
+      holes[String(h)] = {fairway:[], green:[], bunkers:[], tee_boxes:{}, water:[], paths:[], rough_boundary:[]};
+    }
     fetch('/api/features').then(r => r.json()).then(data => {
       data.features.forEach(f => {
         const id = f.properties.osm_id;
+        const geom = f.geometry;
+        const type = f.properties.type;
         const hole = featureAssignments[id];
+
+        // Water and paths are course-wide — auto-distribute to all 18 holes
+        if (type === 'water' || type === 'path') {
+          const targetHoles = Object.keys(holes);
+          if (geom.type === 'Polygon' && type === 'water') {
+            const ring = geom.coordinates[0].map(c => [c[1], c[0]]);
+            targetHoles.forEach(hk => holes[hk].water.push(ring));
+          } else if (geom.type === 'LineString' && type === 'path') {
+            const line = geom.coordinates.map(c => [c[1], c[0]]);
+            targetHoles.forEach(hk => holes[hk].paths.push(line));
+          }
+          return;
+        }
+
         if (!hole) return;
         const hk = String(hole);
-        if (!holes[hk]) holes[hk] = {fairway:[], green:[], bunkers:[], tee_boxes:{}, water:[], paths:[], rough_boundary:[]};
-        const type = f.properties.type;
-        const geom = f.geometry;
         if (geom.type === 'Point') {
           const teeColour = f.properties.tags?.colour || f.properties.tags?.color || 'white';
           holes[hk].tee_boxes[teeColour] = [geom.coordinates[1], geom.coordinates[0]];

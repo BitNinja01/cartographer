@@ -1,6 +1,8 @@
 """CartographerPlugin — PinSheet plugin adapter for Cartographer."""
 from __future__ import annotations
 
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -16,6 +18,24 @@ class CartographerPlugin(PinSheetPlugin):
 
     name = "cartographer"
     version = "1.0.0"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._install_fonts()
+
+    @staticmethod
+    def _install_fonts() -> None:
+        fonts_dir = Path(__file__).parent / "fonts" / "JetBrainsMono"
+        target_dir = Path.home() / ".local" / "share" / "fonts" / "pinsheet"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        needs_cache = False
+        for ttf in fonts_dir.glob("*.ttf"):
+            dst = target_dir / ttf.name
+            if not dst.exists() or dst.stat().st_size != ttf.stat().st_size:
+                shutil.copy2(ttf, dst)
+                needs_cache = True
+        if needs_cache and shutil.which("fc-cache"):
+            subprocess.run(["fc-cache", "-f"], check=False)
 
     def screens(self) -> list:
         from cartographer.screens.hole_view import HoleViewScreen

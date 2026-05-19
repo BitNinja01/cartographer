@@ -142,28 +142,31 @@ def render_hole(
     return dwg.tostring()
 
 
-def render_green(green_geom: dict, canvas_size: float = 200.0) -> str:
+def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = False) -> str:
     """Render a green detail SVG with a grid overlay.
 
     green_geom: a hole geometry dict (only 'green' key is used).
     canvas_size: the width and height of the square SVG canvas in points.
+    fitted: if True, green rings are already fitted — skip fit_hole().
     """
     dwg = svgwrite.Drawing(
         size=(f"{canvas_size}pt", f"{canvas_size}pt"),
         viewBox=f"0 0 {canvas_size} {canvas_size}",
     )
 
-    # Fit the green into the canvas
-    fitted, _, _, _ = fit_hole(
-        {"green": green_geom.get("green", []),
-         "fairway": [], "bunkers": [], "water": [], "rough_boundary": [], "tee_boxes": {}},
-        canvas_size, canvas_size, padding=15.0,
-    )
-    fitted["green"] = [chaikin_smooth(r) for r in fitted.get("green", [])]
+    if fitted:
+        raw = {"green": green_geom.get("green", [])}
+    else:
+        raw, _, _, _ = fit_hole(
+            {"green": green_geom.get("green", []),
+             "fairway": [], "bunkers": [], "water": [], "rough_boundary": [], "tee_boxes": {}},
+            canvas_size, canvas_size, padding=15.0,
+        )
+    raw["green"] = [chaikin_smooth(r) for r in raw.get("green", [])]
 
     stroke_col, fill_col = _COLOURS["green"]
     g = dwg.g()
-    _draw_polygons(dwg, g, fitted.get("green", []), stroke=stroke_col, fill=fill_col)
+    _draw_polygons(dwg, g, raw.get("green", []), stroke=stroke_col, fill=fill_col)
     dwg.add(g)
 
     # Grid overlay

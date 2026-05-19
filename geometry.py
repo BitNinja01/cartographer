@@ -135,7 +135,7 @@ def project_course(holes: dict, scale_data: dict) -> dict:
 def get_hole_bounds(hole_geom: dict) -> tuple[float, float, float, float]:
     """Return (min_x, min_y, max_x, max_y) bounding box for a projected hole."""
     all_x, all_y = [], []
-    for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary", "paths"):
+    for feature_type in ("fairway", "green", "bunkers", "rough_boundary"):
         for ring in hole_geom.get(feature_type, []):
             for x, y in ring:
                 all_x.append(x)

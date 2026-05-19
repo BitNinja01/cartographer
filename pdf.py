@@ -72,10 +72,10 @@ def _get_hole_render_data(
     slot2_svg = ""
     if slot1_mode == "green_grid":
         green_fitted, _, _, _ = fit_hole(hole_geom, SLOT_H, SLOT_H, padding=10.0)
-        slot1_svg = render_green({"green": green_fitted.get("green", [])})
+        slot1_svg = render_green({"green": green_fitted.get("green", [])}, canvas_size=SLOT_H, fitted=True)
     if slot2_mode == "green_grid":
         green_fitted, _, _, _ = fit_hole(hole_geom, SLOT_H, SLOT_H, padding=10.0)
-        slot2_svg = render_green({"green": green_fitted.get("green", [])})
+        slot2_svg = render_green({"green": green_fitted.get("green", [])}, canvas_size=SLOT_H, fitted=True)
 
     return {
         "hole_svg": hole_svg,
