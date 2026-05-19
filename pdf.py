@@ -1,8 +1,8 @@
 # plugins/cartographer/pdf.py
 """PDF export for Cartographer yardage books.
 
-Generates 21 narrow PDFs (4.25" x 14") and combines them into
-5 saddle-stitch booklet PDFs (8.5" x 14") using pypdf.
+Generates 20 narrow PDFs (4.25" x 14") in cross-paired order and
+combines them into 5 saddle-stitch booklet PDFs (8.5" x 14") using pypdf.
 """
 from __future__ import annotations
 
@@ -20,8 +20,9 @@ from cartographer.geometry import (
 )
 from cartographer.renderer import render_hole, render_green
 from cartographer.layout import (
-    compose_page, compose_front_page, compose_back_page, compose_notes_page,
-    PAGE_W, SLOT_H
+    compose_page, compose_front_page, compose_back_page, compose_chart_page,
+    compose_notes_page, compose_stacked_page, compose_hole_top_page,
+    compose_hole_bottom_page, PAGE_W, SLOT_H
 )
 
 HOLE_CANVAS_W = 306.0   # 4.25 * 72
@@ -31,6 +32,58 @@ HOLE_CANVAS_H = 504.0   # 7" for hole diagram section
 def _svg_to_pdf_bytes(svg_string: str) -> bytes:
     """Convert an SVG string to PDF bytes via cairosvg."""
     return cairosvg.svg2pdf(bytestring=svg_string.encode("utf-8"))
+
+
+def _get_hole_render_data(
+    hole_num: int,
+    projected: dict,
+    scale_data: dict,
+    settings: dict,
+    course_ps: dict,
+    slot1_mode: str,
+    slot2_mode: str,
+) -> dict | None:
+    """Render a single hole and return raw data for page composition.
+
+    Returns dict with keys: hole_svg, par, tee_yardages, slot1_svg, slot2_svg
+    or None if hole geometry is missing.
+    """
+    hole_key = str(hole_num)
+    hole_geom = projected.get(hole_key, {})
+    if not hole_geom:
+        return None
+
+    hole_geom = smooth_hole_geometry(hole_geom)
+    fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H)
+
+    ppy = float(scale_data.get("pixels_per_yard", 1.0))
+    if settings.get("cartographer.yardage_arcs", True):
+        distances = settings.get("cartographer.yardage_arc_distances", [100, 125, 150])
+        gcx, gcy = get_green_centroid(fitted)
+        fitted["_arcs"] = compute_yardage_arcs((gcx, gcy), distances, ppy, scale)
+
+    hole_svg = render_hole(fitted, settings=settings)
+
+    hole_ps_data = course_ps.get("holes", {}).get(hole_key, {})
+    tee_yardages = {t: int(y) for t, y in hole_ps_data.get("tees", {}).items()}
+    par = int(hole_ps_data.get("par", 4))
+
+    slot1_svg = ""
+    slot2_svg = ""
+    if slot1_mode == "green_grid":
+        green_fitted, _, _, _ = fit_hole(hole_geom, SLOT_H, SLOT_H, padding=10.0)
+        slot1_svg = render_green({"green": green_fitted.get("green", [])})
+    if slot2_mode == "green_grid":
+        green_fitted, _, _, _ = fit_hole(hole_geom, SLOT_H, SLOT_H, padding=10.0)
+        slot2_svg = render_green({"green": green_fitted.get("green", [])})
+
+    return {
+        "hole_svg": hole_svg,
+        "par": par,
+        "tee_yardages": tee_yardages,
+        "slot1_svg": slot1_svg,
+        "slot2_svg": slot2_svg,
+    }
 
 
 def generate_book(
@@ -133,81 +186,101 @@ def generate_book(
     scale_data = course_geo.get("scale", {})
     projected = project_course(holes_geo, scale_data)
 
-    # Generate 21 narrow PDFs (front cover + 18 holes + scorecard + back cover)
+    # Generate 20 narrow PDFs in cross-paired order
     output_dir.mkdir(parents=True, exist_ok=True)
     narrow_pdfs: list[bytes] = []
 
-    for page_idx in range(0, 21):
+    for page_idx in range(0, 20):
         if progress_callback:
-            progress_callback(page_idx + 1, 21)
-        
-        if page_idx == 0:
-            svg_str = compose_front_page(
+            progress_callback(page_idx + 1, 20)
+
+        if page_idx <= 8:
+            hole_num = 9 - page_idx
+            hd = _get_hole_render_data(
+                hole_num, projected, scale_data, settings, course_ps,
+                slot1_mode, slot2_mode,
+            )
+            if hd:
+                svg_str = compose_page(
+                    hole_svg=hd["hole_svg"], hole_num=hole_num, par=hd["par"],
+                    tee_yardages=hd["tee_yardages"],
+                    slot1_content=slot1_mode, slot2_content=slot2_mode,
+                    slot1_svg=hd["slot1_svg"], slot2_svg=hd["slot2_svg"],
+                    stats_data=stats_data,
+                )
+            else:
+                import svgwrite as svg
+                dwg = svg.Drawing(size=("306pt", "1008pt"), viewBox="0 0 306 1008")
+                dwg.add(dwg.rect(insert=(0, 0), size=(306, 1008), fill="white"))
+                svg_str = dwg.tostring()
+
+        elif page_idx == 9:
+            chart_svg = compose_chart_page()
+            hd = _get_hole_render_data(
+                18, projected, scale_data, settings, course_ps,
+                slot1_mode, slot2_mode,
+            )
+            if hd:
+                bottom_svg = compose_hole_bottom_page(
+                    hole_num=18, slot1_content=slot1_mode, slot2_content=slot2_mode,
+                    slot1_svg=hd["slot1_svg"], slot2_svg=hd["slot2_svg"],
+                    stats_data=stats_data,
+                )
+            else:
+                import svgwrite as svg
+                dwg = svg.Drawing(size=("306pt", "504pt"), viewBox="0 0 306 504")
+                dwg.add(dwg.rect(insert=(0, 0), size=(306, 504), fill="white"))
+                bottom_svg = dwg.tostring()
+            svg_str = compose_stacked_page(chart_svg, bottom_svg)
+
+        elif page_idx <= 17:
+            hole_num = page_idx
+            hd = _get_hole_render_data(
+                hole_num, projected, scale_data, settings, course_ps,
+                slot1_mode, slot2_mode,
+            )
+            if hd:
+                svg_str = compose_page(
+                    hole_svg=hd["hole_svg"], hole_num=hole_num, par=hd["par"],
+                    tee_yardages=hd["tee_yardages"],
+                    slot1_content=slot1_mode, slot2_content=slot2_mode,
+                    slot1_svg=hd["slot1_svg"], slot2_svg=hd["slot2_svg"],
+                    stats_data=stats_data,
+                )
+            else:
+                import svgwrite as svg
+                dwg = svg.Drawing(size=("306pt", "1008pt"), viewBox="0 0 306 1008")
+                dwg.add(dwg.rect(insert=(0, 0), size=(306, 1008), fill="white"))
+                svg_str = dwg.tostring()
+
+        elif page_idx == 18:
+            hd = _get_hole_render_data(
+                18, projected, scale_data, settings, course_ps,
+                slot1_mode, slot2_mode,
+            )
+            if hd:
+                top_svg = compose_hole_top_page(
+                    hole_svg=hd["hole_svg"], hole_num=18, par=hd["par"],
+                    tee_yardages=hd["tee_yardages"],
+                )
+            else:
+                import svgwrite as svg
+                dwg = svg.Drawing(size=("306pt", "504pt"), viewBox="0 0 306 504")
+                dwg.add(dwg.rect(insert=(0, 0), size=(306, 504), fill="white"))
+                top_svg = dwg.tostring()
+            notes_svg = compose_notes_page()
+            svg_str = compose_stacked_page(top_svg, notes_svg)
+
+        elif page_idx == 19:
+            back_svg = compose_back_page()
+            front_svg = compose_front_page(
                 course_name=course_name,
                 location=course_ps.get("location"),
                 total_par=total_par,
                 tee_totals=tee_totals,
             )
-        elif page_idx == 19:
-            # Scorecard/notes page
-            svg_str = compose_notes_page(title="Scorecard")
-        elif page_idx == 20:
-            svg_str = compose_back_page()
-        else:
-            hole_num = page_idx
-            hole_key = str(hole_num)
-            hole_geom = projected.get(hole_key, {})
-            
-            if not hole_geom:
-                # Blank page for missing hole
-                import svgwrite as svg
-                dwg = svg.Drawing(size=("306pt", "1008pt"), viewBox="0 0 306 1008")
-                dwg.add(dwg.rect(insert=(0, 0), size=(306, 1008), fill="white"))
-                svg_str = dwg.tostring()
-            else:
-                # Apply smoothing
-                hole_geom = smooth_hole_geometry(hole_geom)
-                
-                # Fit and render hole diagram
-                fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H)
-                
-                # Attach arcs
-                ppy = float(scale_data.get("pixels_per_yard", 1.0))
-                if settings.get("cartographer.yardage_arcs", True):
-                    distances = settings.get("cartographer.yardage_arc_distances", [100, 125, 150])
-                    gcx, gcy = get_green_centroid(fitted)
-                    fitted["_arcs"] = compute_yardage_arcs((gcx, gcy), distances, ppy, scale)
-                
-                hole_svg = render_hole(fitted, settings=settings)
-                
-                # Get tee yardages and par
-                hole_ps_data = course_ps.get("holes", {}).get(hole_key, {})
-                tee_yardages = {t: int(y) for t, y in hole_ps_data.get("tees", {}).items()}
-                par = int(hole_ps_data.get("par", 4))
-                
-                # Render green SVG for slot (if needed)
-                slot1_svg = ""
-                slot2_svg = ""
-                if slot1_mode == "green_grid":
-                    green_fitted, _, _, _ = fit_hole(hole_geom, SLOT_H, SLOT_H, padding=10.0)
-                    slot1_svg = render_green({"green": green_fitted.get("green", [])})
-                if slot2_mode == "green_grid":
-                    green_fitted, _, _, _ = fit_hole(hole_geom, SLOT_H, SLOT_H, padding=10.0)
-                    slot2_svg = render_green({"green": green_fitted.get("green", [])})
-                
-                # Compose page
-                svg_str = compose_page(
-                    hole_svg=hole_svg,
-                    hole_num=hole_num,
-                    par=par,
-                    tee_yardages=tee_yardages,
-                    slot1_content=slot1_mode,
-                    slot2_content=slot2_mode,
-                    slot1_svg=slot1_svg,
-                    slot2_svg=slot2_svg,
-                    stats_data=stats_data,
-                )
-        
+            svg_str = compose_stacked_page(back_svg, front_svg)
+
         pdf_bytes = _svg_to_pdf_bytes(svg_str)
         narrow_pdfs.append(pdf_bytes)
         narrow_path = output_dir / f"yardage_book_{page_idx:02d}.pdf"
@@ -216,11 +289,11 @@ def generate_book(
     # Combine into 5 saddle-stitch booklets, each with two 8.5"x14" pages
     # Each page has two narrow PDFs merged side-by-side
     booklet_pages = [
-        ([1, 2], [11, 12]),
-        ([3, 4], [13, 14]),
-        ([5, 6], [15, 16]),
-        ([7, 8], [17, 18]),
-        ([9, 10], [19, 20]),
+        ([0, 19], [1, 18]),
+        ([2, 17], [3, 16]),
+        ([4, 15], [5, 14]),
+        ([6, 13], [7, 12]),
+        ([8, 11], [9, 10]),
     ]
 
     for booklet_idx, (left_pair, right_pair) in enumerate(booklet_pages, start=1):

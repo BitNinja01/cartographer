@@ -16,7 +16,7 @@ _COLOURS = {
     "rough_boundary": ("#000000", "#a8d1de"),
     "fairway":        ("#000000", "#ccebb0"),
     "water":          ("#000000", "#a8d1de"),
-    "path":           ("#000000", "#d4c9a8"),
+    "paths":          ("#000000", "#d4c9a8"),
     "bunkers":        ("#000000", "#f5e8c5"),
     "green":          ("#000000", "#87debd"),
 }
@@ -52,6 +52,28 @@ def _draw_polygons(
         ))
 
 
+def _draw_lines(
+    dwg: svgwrite.Drawing,
+    group: svgwrite.container.Group,
+    lines: list[list],
+    stroke: str,
+    stroke_width: float | None = None,
+) -> None:
+    """Draw a list of LineStrings onto a svgwrite group."""
+    if stroke_width is None:
+        stroke_width = _STROKE_WIDTH
+    for line in lines:
+        if len(line) < 2:
+            continue
+        points = [(float(x), float(y)) for x, y in line]
+        group.add(dwg.polyline(
+            points=points,
+            stroke=stroke,
+            fill="none",
+            stroke_width=stroke_width,
+        ))
+
+
 def render_hole(
     hole_geom: dict,
     settings: dict | None = None,
@@ -70,12 +92,20 @@ def render_hole(
     dwg = svgwrite.Drawing(size=(f"{canvas_w}pt", f"{canvas_h}pt"),
                            viewBox=f"0 0 {canvas_w} {canvas_h}")
 
-    # Render order: rough → fairway → water → path → bunkers → green → tees → arcs
-    for feature_type in ("rough_boundary", "fairway", "water", "path", "bunkers", "green"):
+    # Render order: rough → fairway → water → paths → bunkers → green → tees → arcs
+    for feature_type in ("rough_boundary", "fairway", "water", "bunkers", "green"):
         stroke_col, fill_col = _COLOURS[feature_type]
         rings = hole_geom.get(feature_type, [])
         g = dwg.g()
         _draw_polygons(dwg, g, rings, stroke=stroke_col, fill=fill_col)
+        dwg.add(g)
+
+    # Paths are LineStrings, not polygons — draw separately
+    stroke_col, _ = _COLOURS["paths"]
+    paths = hole_geom.get("paths", [])
+    if paths:
+        g = dwg.g()
+        _draw_lines(dwg, g, paths, stroke=stroke_col)
         dwg.add(g)
 
     # Tee box markers — same fill/stroke as rough/water

@@ -86,7 +86,7 @@ def project_course(holes: dict, scale_data: dict) -> dict:
     # Collect all lat/lon points to find course centroid for projection origin
     all_lats, all_lons = [], []
     for hole_data in holes.values():
-        for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary"):
+        for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary", "paths"):
             for ring in hole_data.get(feature_type, []):
                 for pt in ring:
                     all_lats.append(pt[0])
@@ -111,7 +111,7 @@ def project_course(holes: dict, scale_data: dict) -> dict:
     for hole_num, hole_data in holes.items():
         ph: dict[str, Any] = {}
 
-        for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary"):
+        for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary", "paths"):
             rings = hole_data.get(feature_type, [])
             ph[feature_type] = [
                 project_ring(ring, origin_lat, origin_lon,
@@ -135,7 +135,7 @@ def project_course(holes: dict, scale_data: dict) -> dict:
 def get_hole_bounds(hole_geom: dict) -> tuple[float, float, float, float]:
     """Return (min_x, min_y, max_x, max_y) bounding box for a projected hole."""
     all_x, all_y = [], []
-    for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary"):
+    for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary", "paths"):
         for ring in hole_geom.get(feature_type, []):
             for x, y in ring:
                 all_x.append(x)
@@ -170,7 +170,7 @@ def get_green_centroid(hole_geom: dict) -> tuple[float, float]:
     union = polys[0]
     for p in polys[1:]:
         union = union.union(p)
-    c = union.representative_point()
+    c = union.centroid
     return c.x, c.y
 
 
@@ -208,7 +208,7 @@ def fit_hole(
         return [list(rotate_point(x, y)) for x, y in ring]
 
     rotated: dict[str, Any] = {}
-    for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary"):
+    for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary", "paths"):
         rotated[feature_type] = [rotate_ring(r) for r in hole_geom.get(feature_type, [])]
     rotated["tee_boxes"] = {
         name: list(rotate_point(x, y))
@@ -232,7 +232,7 @@ def fit_hole(
         return [list(transform_point(x, y)) for x, y in ring]
 
     fitted: dict[str, Any] = {}
-    for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary"):
+    for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary", "paths"):
         fitted[feature_type] = [transform_ring(r) for r in rotated.get(feature_type, [])]
     fitted["tee_boxes"] = {
         name: list(transform_point(x, y))
@@ -296,5 +296,7 @@ def smooth_hole_geometry(hole_geom: dict, iterations: int = 3) -> dict:
     for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary"):
         rings = hole_geom.get(feature_type, [])
         smoothed[feature_type] = [chaikin_smooth(ring, iterations) for ring in rings]
+    # Paths are LineStrings, not closed polygons — pass through unsmoothed
+    smoothed["paths"] = hole_geom.get("paths", [])
     smoothed["tee_boxes"] = hole_geom.get("tee_boxes", {})
     return smoothed
