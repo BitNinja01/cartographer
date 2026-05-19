@@ -57,8 +57,13 @@ def _classify_tags(tags: dict[str, str]) -> str | None:
     if natural in ("wood", "scrub", "grassland", "tree_row", "tree"):
         return "rough"
     landuse = tags.get("landuse", "")
-    if landuse in ("forest", "grass"):
+    if landuse == "forest":
         return "rough"
+    if landuse == "grass":
+        # Bare grass with no golf tag — treat as fairway
+        if golf:
+            return "rough"
+        return "fairway"
     if landuse:  # Any other landuse (residential, recreation_ground, etc.) — exclude
         return None
 
