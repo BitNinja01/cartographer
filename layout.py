@@ -54,7 +54,7 @@ def compose_page(
         insert=(PAGE_W - MARGIN - 10, MARGIN + 35),
         font_size="32pt",
         font_weight="bold",
-        font_family="monospace",
+        font_family="JetBrainsMono, monospace",
         fill="#212121",
         text_anchor="end",
     ))
@@ -62,7 +62,7 @@ def compose_page(
         f"Par {par}",
         insert=(PAGE_W - MARGIN - 10, MARGIN + 52),
         font_size="9pt",
-        font_family="monospace",
+        font_family="JetBrainsMono, monospace",
         fill="#555",
         text_anchor="end",
     ))
@@ -80,14 +80,22 @@ def compose_page(
         key=lambda x: x[1]
     )
 
+    bg_width = 80
+    bg_height = 11
     y_tee = MARGIN + TOP_HALF_H - 15 - (len(sorted_tees) * 13)
     for tee_name, yardage in sorted_tees:
         col = tee_colour_map.get(tee_name, "#333")
+        dwg.add(dwg.rect(
+            insert=(PAGE_W - MARGIN - 10 - bg_width, y_tee - 9),
+            size=(bg_width, bg_height),
+            fill="white",
+            stroke="none",
+        ))
         dwg.add(dwg.text(
-            f"{tee_name.upper()}  {yardage}",
+            f"{tee_name.upper()} : {yardage}",
             insert=(PAGE_W - MARGIN - 10, y_tee),
             font_size="9pt",
-            font_family="monospace",
+            font_family="JetBrainsMono, monospace",
             fill=col,
             text_anchor="end",
         ))

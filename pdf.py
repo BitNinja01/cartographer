@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 import cairosvg
-from pypdf import PdfWriter, PdfReader
+from pypdf import PdfWriter, PdfReader, Transformation
 
 from cartographer.data import load_courses_geo
 from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry
@@ -198,17 +198,26 @@ def generate_book(
         narrow_path = output_dir / f"yardage_book_{page_idx:02d}.pdf"
         narrow_path.write_bytes(pdf_bytes)
 
-    # Combine into 10 saddle-stitch booklets (pairs of narrow pages)
-    for booklet_idx in range(1, 11):
-        left_idx = (booklet_idx - 1) * 2
-        right_idx = left_idx + 1
-        
+    # Combine into 5 saddle-stitch booklets, each with two 8.5"x14" pages
+    # Each page has two narrow PDFs merged side-by-side
+    booklet_pages = [
+        ([0, 1], [10, 11]),   # Booklet 1: pages (9,8) and (10,11)
+        ([2, 3], [12, 13]),   # Booklet 2: pages (7,6) and (12,13)
+        ([4, 5], [14, 15]),   # Booklet 3: pages (5,4) and (14,15)
+        ([6, 7], [16, 17]),   # Booklet 4: pages (3,2) and (16,17)
+        ([8, 9], [18, 19]),   # Booklet 5: pages (1,scorecard) and (18,back)
+    ]
+
+    for booklet_idx, (left_pair, right_pair) in enumerate(booklet_pages, start=1):
         writer = PdfWriter()
-        left_reader = PdfReader(io.BytesIO(narrow_pdfs[left_idx]))
-        right_reader = PdfReader(io.BytesIO(narrow_pdfs[right_idx]))
-        writer.add_page(left_reader.pages[0])
-        writer.add_page(right_reader.pages[0])
-        
+
+        for pair in (left_pair, right_pair):
+            page = writer.add_blank_page(612, 1008)  # 8.5" x 14"
+            left_pdf = PdfReader(io.BytesIO(narrow_pdfs[pair[0]])).pages[0]
+            right_pdf = PdfReader(io.BytesIO(narrow_pdfs[pair[1]])).pages[0]
+            page.merge_transformed_page(left_pdf, Transformation().translate(0, 0))
+            page.merge_transformed_page(right_pdf, Transformation().translate(306, 0))
+
         booklet_path = output_dir / f"yardage_book_booklet_{booklet_idx:02d}.pdf"
         with open(booklet_path, "wb") as f:
             writer.write(f)

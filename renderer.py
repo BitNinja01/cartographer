@@ -82,7 +82,7 @@ def render_hole(
         dwg.add(dwg.circle(
             center=(float(tx), float(ty)),
             r=4,
-            fill=_COLOURS["rough_boundary"][1],
+            fill=_COLOURS["fairway"][1],
             stroke=_COLOURS["rough_boundary"][0],
             stroke_width=_STROKE_WIDTH,
         ))
