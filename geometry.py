@@ -10,8 +10,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from shapely.geometry import Polygon, Point, MultiPolygon
-from shapely.affinity import rotate, scale, translate
+from shapely.geometry import Polygon
 
 
 def _haversine_yards(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -80,7 +79,7 @@ def project_course(holes: dict, scale_data: dict) -> dict:
     Returns a new dict with the same structure as holes but with pixel
     coordinates instead of lat/lon.
 
-    scale_data must contain 'pixels_per_yard', 'reference_point_a', 'reference_point_b'.
+    scale_data must contain 'pixels_per_yard'.
     """
     pixels_per_yard = float(scale_data["pixels_per_yard"])
 
