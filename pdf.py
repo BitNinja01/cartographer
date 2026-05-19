@@ -16,7 +16,7 @@ from pypdf import PdfWriter, PdfReader
 from cartographer.data import load_courses_geo
 from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry
 from cartographer.renderer import render_hole, render_green
-from cartographer.layout import compose_page, PAGE_W, HOLE_H, SLOT_H
+from cartographer.layout import compose_page, PAGE_W, SLOT_H
 
 HOLE_CANVAS_W = 306.0   # 4.25 * 72
 HOLE_CANVAS_H = 504.0   # 7" for hole diagram section
