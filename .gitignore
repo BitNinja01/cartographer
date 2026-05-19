@@ -1,0 +1,4 @@
+__pycache__/
+*.py[cod]
+tagger/static/leaflet/*
+!tagger/static/leaflet/.gitkeep
