@@ -14,7 +14,7 @@ class CourseGalleryScreen(Screen):
     """Browse all 18 hole diagrams for a course with a sidebar navigator."""
 
     BINDINGS = [
-        Binding("escape", "pop_screen", "Back"),
+        Binding("escape", "app.pop_screen", "Back"),
         Binding("j", "next_hole", "Next Hole"),
         Binding("k", "prev_hole", "Prev Hole"),
     ]

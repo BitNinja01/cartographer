@@ -14,7 +14,7 @@ class HoleViewScreen(Screen):
     """Shows the hole diagram for a single hole of a course."""
 
     BINDINGS = [
-        Binding("escape", "pop_screen", "Back"),
+        Binding("escape", "app.pop_screen", "Back"),
     ]
 
     def __init__(self, course_name: str, hole_number: int, **kwargs):
