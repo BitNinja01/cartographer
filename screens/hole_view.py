@@ -2,12 +2,14 @@
 """HoleViewScreen — single hole diagram view for PinSheet."""
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Center
 from textual.screen import Screen
-from textual.widgets import Footer, Header, LoadingIndicator, Static
+from textual.widgets import Footer, Header
 
 
 class HoleViewScreen(Screen):
@@ -23,42 +25,62 @@ class HoleViewScreen(Screen):
         self._hole_number = hole_number
 
     def compose(self) -> ComposeResult:
+        from textual_image.widget import TGPImage as TImage
+
         yield Header()
-        yield Center(LoadingIndicator(), id="hole-loading")
-        yield Center(Static("", id="hole-svg-widget"), id="hole-svg-container")
+        yield TImage(id="hole-svg-widget")
         yield Footer()
 
     def on_mount(self) -> None:
         self.title = f"Hole {self._hole_number} — {self._course_name}"
-        self.query_one("#hole-svg-container").display = False
         self._render_hole()
 
     @work(thread=True)
     def _render_hole(self) -> None:
-        from cartographer.renderer import render_hole_svg
+        from textual_image.widget import get_cell_size
+        from cartographer.renderer import render_hole_svg, svg_to_png
         from cartographer.data import load_courses_geo
 
         courses_geo = load_courses_geo()
         if self._course_name not in courses_geo:
-            svg = ""
-        else:
-            svg = render_hole_svg(self._course_name, self._hole_number)
+            self.app.call_from_thread(self._display_result, None)
+            return
 
-        self.app.call_from_thread(self._display_result, svg)
-
-    def _display_result(self, svg: str) -> None:
-        self.query_one("#hole-loading").display = False
-        container = self.query_one("#hole-svg-container")
-        widget = self.query_one("#hole-svg-widget", Static)
-
+        svg = render_hole_svg(self._course_name, self._hole_number)
         if not svg:
+            self.app.call_from_thread(self._display_result, None)
+            return
+
+        try:
+            cell_w, cell_h = get_cell_size()
+        except Exception:
+            cell_w, cell_h = 8, 16
+
+        available_cols = self.size.width
+        available_rows = self.size.height - 2
+        target_w = available_cols * cell_w
+        target_h = available_rows * cell_h
+
+        try:
+            png_bytes = svg_to_png(svg, target_w, target_h)
+        except Exception:
+            self.app.call_from_thread(self._display_result, None)
+            return
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        tmp.write(png_bytes)
+        tmp.close()
+
+        self.app.call_from_thread(self._display_result, Path(tmp.name))
+
+    def _display_result(self, png_path: Path | None) -> None:
+        from textual_image.widget import TGPImage as TImage
+
+        widget = self.query_one("#hole-svg-widget", TImage)
+        if png_path is None:
             widget.update(
                 f"No course geometry available for {self._course_name}.\n\n"
                 f'Run: python -m cartographer.tagger "{self._course_name}" to add it.'
             )
         else:
-            widget.update(f"[Hole diagram: {self._course_name} hole {self._hole_number}]\n\n"
-                          f"SVG rendered ({len(svg)} bytes). "
-                          f"textual-image display requires cairosvg and textual-image installed.")
-
-        container.display = True
+            widget.image = png_path

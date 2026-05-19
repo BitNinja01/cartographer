@@ -18,9 +18,8 @@ _GOLF_TAG_MAP = {
     "green": "green",
     "bunker": "bunker",
     "water_hazard": "water",
-    "rough": "rough",
     "tee": "tee",
-    "cartpath": "rough",
+    "cartpath": "path",
 }
 
 # Tag patterns for non-golf features that should be excluded entirely
@@ -30,11 +29,12 @@ _EXCLUDE_TAGS = {"highway", "building", "amenity", "bridge", "tunnel",
 
 def _classify_tags(tags: dict[str, str]) -> str | None:
     """Return the internal feature type, or None to exclude the feature."""
+    # Allow cart paths through despite having excluded tags like highway=path
+    if tags.get("golf") == "cartpath":
+        return "path"
+
     # Exclude obviously non-golf infrastructure
     if any(k in _EXCLUDE_TAGS for k in tags):
-        # Allow leisure=golf_course (outer boundary) through as rough
-        if tags.get("leisure") == "golf_course":
-            return "rough"
         return None
 
     golf = tags.get("golf", "")
@@ -52,24 +52,24 @@ def _classify_tags(tags: dict[str, str]) -> str | None:
     if tags.get("water"):
         return "water"
 
-    # Natural features common on golf courses
+    # Natural features — exclude (not needed for cartography)
     natural = tags.get("natural", "")
     if natural in ("wood", "scrub", "grassland", "tree_row", "tree"):
-        return "rough"
+        return None
     landuse = tags.get("landuse", "")
     if landuse == "forest":
-        return "rough"
+        return None
     if landuse == "grass":
         # Bare grass with no golf tag — treat as fairway
         if golf:
-            return "rough"
+            return None
         return "fairway"
     if landuse:  # Any other landuse (residential, recreation_ground, etc.) — exclude
         return None
 
     # Course infrastructure
     if tags.get("barrier") in ("fence", "wall", "hedge"):
-        return "rough"
+        return None
 
     # No relevant tags — exclude
     if not tags:
@@ -112,18 +112,59 @@ def parse_osm_file(path: Path) -> list[dict]:
 
     features = []
 
-    # Extract ways (polygons)
+    # First pass: collect all way geometry and tags
+    way_node_refs: dict[str, list[str]] = {}
+    way_tags: dict[str, dict[str, str]] = {}
     for way in root.iter("{*}way"):
         osm_id = way.get("id", "")
+        node_ids = [nd.get("ref", "") for nd in way.findall("nd")]
         tags = {tag.get("k", ""): tag.get("v", "") for tag in way.findall("tag")}
+        way_node_refs[osm_id] = node_ids
+        way_tags[osm_id] = tags
+
+    # Parse multipolygon relations
+    used_way_ids: set[str] = set()
+    for relation in root.iter("{*}relation"):
+        tags = {tag.get("k", ""): tag.get("v", "") for tag in relation.findall("tag")}
+        if tags.get("type") != "multipolygon" and relation.get("type") != "multipolygon":
+            continue
         feature_type = _classify_tags(tags)
         if feature_type is None:
             continue
+        relation_id = relation.get("id", "")
+        outer_idx = 0
+        for member in relation.findall("member"):
+            way_ref = member.get("ref", "")
+            role = member.get("role", "")
+            if role != "outer":
+                continue
+            used_way_ids.add(way_ref)
+            if way_ref not in way_node_refs:
+                continue
+            node_ids = way_node_refs[way_ref]
+            ring = _nodes_to_ring(node_ids, node_coords)
+            if len(ring) >= 3:
+                outer_idx += 1
+                feature_id = f"{relation_id}_{outer_idx}" if outer_idx > 1 else relation_id
+                features.append({
+                    "osm_id": feature_id,
+                    "type": feature_type,
+                    "geometry": ring,
+                    "is_point": False,
+                    "tags": tags,
+                })
 
-        node_ids = [nd.get("ref", "") for nd in way.findall("nd")]
+    # Parse standalone ways (not consumed by relations)
+    for osm_id, tags in way_tags.items():
+        if osm_id in used_way_ids:
+            continue
+        feature_type = _classify_tags(tags)
+        if feature_type is None:
+            continue
+        node_ids = way_node_refs[osm_id]
         ring = _nodes_to_ring(node_ids, node_coords)
-
-        if len(ring) >= 3:
+        min_nodes = 2 if feature_type == "path" else 3
+        if len(ring) >= min_nodes:
             features.append({
                 "osm_id": osm_id,
                 "type": feature_type,
@@ -204,6 +245,7 @@ def fetch_osm_features(course_name: str, save_path: Path) -> list[dict]:
     [out:xml][timeout:120];
     (
       way["golf"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});
+      relation["golf"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});
       node["golf"="tee"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});
       way["natural"="water"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});
     );
@@ -228,6 +270,7 @@ def fetch_osm_features(course_name: str, save_path: Path) -> list[dict]:
             f"https://overpass-api.de/api/interpreter?data="
             f"[out:xml][timeout:120];("
             f'way["golf"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});'
+            f'relation["golf"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});'
             f'node["golf"="tee"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});'
             f'way["natural"="water"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});'
             f');out body;>;out skel qt;'

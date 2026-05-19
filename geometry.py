@@ -179,11 +179,13 @@ def fit_hole(
     canvas_width: float,
     canvas_height: float,
     padding: float = 20.0,
-) -> tuple[dict, float, float]:
+) -> tuple[dict, float, float, float]:
     """Rotate hole so green faces top, then scale and centre within canvas bounds.
 
-    Returns (transformed_hole_geom, offset_x, offset_y).
+    Returns (transformed_hole_geom, offset_x, offset_y, scale_factor).
     The returned geom has coordinates ready for SVG rendering.
+    scale_factor is the ratio applied to project_course coordinates to fit
+    the canvas — needed by callers that compute distances in canvas space.
     """
     green_cx, green_cy = get_green_centroid(hole_geom)
     min_x, min_y, max_x, max_y = get_hole_bounds(hole_geom)
@@ -237,7 +239,7 @@ def fit_hole(
         for name, (x, y) in rotated.get("tee_boxes", {}).items()
     }
 
-    return fitted, offset_x, offset_y
+    return fitted, offset_x, offset_y, scale_factor
 
 
 def compute_yardage_arcs(

@@ -21,7 +21,7 @@
       background: #333; cursor: pointer; font-size: 12px; border: 1px solid #444;
     }
     .feature-item:hover { background: #3a3a3a; }
-    .feature-item.assigned { border-color: #4CAF50; }
+    .feature-item.assigned { opacity: 0.6; border-color: #4CAF50; background: #2a3a2a; }
     .feature-item .type-badge {
       display: inline-block; padding: 1px 6px; border-radius: 3px;
       font-size: 10px; margin-right: 6px; color: white;
@@ -33,6 +33,7 @@
     .type-rough { background: #228B22; }
     .type-tee { background: #555; }
     .type-unclassified { background: #888; }
+    .type-path { background: #FF8F00; }
     #controls { padding: 12px; border-top: 1px solid #444; display: flex; flex-direction: column; gap: 8px; }
     button {
       padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer;
@@ -43,42 +44,16 @@
     #btn-scale { background: #1565C0; color: white; }
     #btn-scale:hover { background: #0D47A1; }
     #scale-info { font-size: 11px; color: #aaa; }
-    #popup-modal {
-      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.7); z-index: 9999; align-items: center; justify-content: center;
-    }
-    #popup-modal.active { display: flex; }
-    #popup-inner {
-      background: #2a2a2a; border: 1px solid #555; border-radius: 6px;
-      padding: 20px; min-width: 240px;
-    }
-    #popup-inner h3 { font-size: 13px; margin-bottom: 12px; }
-    #hole-input {
-      width: 100%; padding: 6px; background: #333; border: 1px solid #555;
-      color: white; font-family: monospace; border-radius: 3px; font-size: 14px;
-    }
-    .popup-buttons { display: flex; gap: 8px; margin-top: 12px; }
-    .popup-buttons button { flex: 1; }
-    #btn-assign { background: #4CAF50; color: white; }
-    #btn-cancel-popup { background: #555; color: white; }
-    #scale-modal {
-      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.7); z-index: 9999; align-items: center; justify-content: center;
-    }
-    #scale-modal.active { display: flex; }
-    #scale-inner {
-      background: #2a2a2a; border: 1px solid #555; border-radius: 6px;
-      padding: 20px; min-width: 260px;
-    }
-    #scale-inner p { font-size: 12px; color: #aaa; margin-bottom: 12px; line-height: 1.5; }
-    #distance-input {
-      width: 100%; padding: 6px; background: #333; border: 1px solid #555;
-      color: white; font-family: monospace; border-radius: 3px; font-size: 14px;
-    }
+
     #type-filters { padding: 8px 16px; border-bottom: 1px solid #444; }
     #type-filters label { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; font-size: 11px; cursor: pointer; }
     #type-filters input[type=checkbox] { accent-color: #4CAF50; }
     .feature-item.hidden { display: none; }
+    #hole-selector { padding: 8px 16px; border-bottom: 1px solid #444; display: flex; align-items: center; gap: 8px; }
+    #hole-label { font-size: 11px; color: #aaa; }
+    #current-hole { font-size: 18px; font-weight: bold; color: #4CAF50; min-width: 24px; text-align: center; }
+    #btn-prev-hole, #btn-next-hole { background: #333; color: #aaa; border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 16px; padding: 2px 8px; }
+    #btn-prev-hole:hover, #btn-next-hole:hover { background: #444; color: white; }
   </style>
 </head>
 <body>
@@ -90,41 +65,29 @@
     <label><input type="checkbox" checked onchange="toggleFilter('green', this.checked)"> <span class="type-badge type-green">green</span></label>
     <label><input type="checkbox" checked onchange="toggleFilter('bunker', this.checked)"> <span class="type-badge type-bunker">bunker</span></label>
     <label><input type="checkbox" checked onchange="toggleFilter('water', this.checked)"> <span class="type-badge type-water">water</span></label>
-    <label><input type="checkbox" checked onchange="toggleFilter('rough', this.checked)"> <span class="type-badge type-rough">rough</span></label>
+    <label><input type="checkbox" checked onchange="toggleFilter('path', this.checked)"> <span class="type-badge type-path">path</span></label>
     <label><input type="checkbox" checked onchange="toggleFilter('tee', this.checked)"> <span class="type-badge type-tee">tee</span></label>
     <label><input type="checkbox" checked onchange="toggleFilter('unclassified', this.checked)"> <span class="type-badge type-unclassified">other</span></label>
+  </div>
+  <div id="hole-selector">
+    <span id="hole-label">Tagging hole:</span>
+    <button id="btn-prev-hole" title="Previous hole">◀</button>
+    <span id="current-hole">1</span>
+    <button id="btn-next-hole" title="Next hole">▶</button>
   </div>
   <div id="feature-list"></div>
   <div id="controls">
     <div id="scale-info">Scale: not set</div>
     <button id="btn-scale">Set Scale (2-point)</button>
+    <div id="scale-input-area" style="display:none;">
+      <input id="distance-input" type="number" min="1" max="600" placeholder="Distance in yards"
+             style="width:100%;padding:6px;background:#333;border:1px solid #555;color:white;font-family:monospace;border-radius:3px;font-size:14px;margin-top:8px;" />
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button id="btn-confirm-scale" style="flex:1;background:#1565C0;color:white;">Confirm</button>
+        <button id="btn-cancel-scale-2" style="flex:1;background:#555;color:white;">Cancel</button>
+      </div>
+    </div>
     <button id="btn-save">Save &amp; Close</button>
-  </div>
-</div>
-
-<!-- Hole assignment modal -->
-<div id="popup-modal">
-  <div id="popup-inner">
-    <h3>Assign to hole</h3>
-    <input id="hole-input" type="number" min="1" max="18" placeholder="1–18" />
-    <div class="popup-buttons">
-      <button id="btn-assign">Assign</button>
-      <button id="btn-cancel-popup">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- Scale modal -->
-<div id="scale-modal">
-  <div id="scale-inner">
-    <h3>Set Scale</h3>
-    <p>Click two points on the map with a known distance between them (e.g. front to back of a tee box).</p>
-    <p id="scale-step-info">Step 1: Click the first point on the map.</p>
-    <input id="distance-input" type="number" min="1" max="600" placeholder="Distance in yards" style="display:none; margin-top:8px;" />
-    <div class="popup-buttons" style="margin-top: 12px;">
-      <button id="btn-confirm-scale" style="background:#1565C0;color:white;display:none;">Confirm</button>
-      <button id="btn-cancel-scale" style="background:#555;color:white;">Cancel</button>
-    </div>
   </div>
 </div>
 
@@ -136,24 +99,47 @@
 
   const typeColours = {
     fairway: '#4CAF50', green: '#00796B', bunker: '#8D6E63',
-    water: '#1565C0', rough: '#228B22', tee: '#555', unclassified: '#888'
+    water: '#1565C0', rough: '#228B22', tee: '#555', unclassified: '#888', path: '#FF8F00'
   };
 
   let featureAssignments = {};
   let scaleData = null;
-  const activeFilters = new Set(['fairway','green','bunker','water','rough','tee','unclassified']);
+  const activeFilters = new Set(['fairway','green','bunker','water','path','tee','unclassified']);
   let allFeatures = [];
 
   function toggleFilter(type, visible) {
     visible ? activeFilters.add(type) : activeFilters.delete(type);
     Object.entries(layers).forEach(([id, layer]) => {
       if (layer.feature && layer.feature.properties.type === type) {
-        visible ? map.addLayer(layer) : map.removeLayer(layer);
+        const isAssigned = !!featureAssignments[id];
+        if (visible && !isAssigned) {
+          map.addLayer(layer);
+        } else {
+          map.removeLayer(layer);
+        }
       }
     });
     renderFeatureList(allFeatures);
   }
-  let selectedFeatureId = null;
+
+  let currentHole = 1;
+
+  function setCurrentHole(hole) {
+    currentHole = hole;
+    const el = document.getElementById('current-hole');
+    el.textContent = hole >= 1 && hole <= 18 ? hole : '—';
+    el.style.color = (hole >= 1 && hole <= 18) ? '#4CAF50' : '#888';
+  }
+
+  document.getElementById('btn-prev-hole').onclick = () => {
+    setCurrentHole(Math.max(1, currentHole - 1));
+  };
+  document.getElementById('btn-next-hole').onclick = () => {
+    setCurrentHole(Math.min(18, currentHole + 1));
+  };
+
+  setCurrentHole(1);
+
   let scaleMode = false;
   let scalePoints = [];
   let scaleMarkers = [];
@@ -169,6 +155,13 @@
         scaleData = existing.scale;
         updateScaleInfo();
       }
+
+      (data.features || []).forEach(f => {
+        const hole = f.properties.hole;
+        if (hole && hole >= 1 && hole <= 18) {
+          featureAssignments[f.properties.osm_id] = hole;
+        }
+      });
 
       const geojsonLayer = L.geoJSON(data, {
         style: feature => ({
@@ -186,19 +179,29 @@
           const id = feature.properties.osm_id;
           layers[id] = layer;
           layer.on('click', e => {
-            if (scaleMode) {
-              handleScaleClick(e.latlng);
+            if (scaleMode) return;
+            
+            if (featureAssignments[id]) {
+              delete featureAssignments[id];
+              map.addLayer(layer);
+              renderFeatureList(allFeatures);
               return;
             }
-            selectedFeatureId = id;
-            document.getElementById('popup-modal').classList.add('active');
-            document.getElementById('hole-input').value = featureAssignments[id] || '';
-            document.getElementById('hole-input').focus();
+            if (currentHole >= 1 && currentHole <= 18) {
+              featureAssignments[id] = currentHole;
+              map.removeLayer(layer);
+              renderFeatureList(allFeatures);
+            }
           });
         }
       }).addTo(map);
 
       map.fitBounds(geojsonLayer.getBounds().pad(0.1));
+      Object.entries(featureAssignments).forEach(([id]) => {
+        if (layers[id]) {
+          map.removeLayer(layers[id]);
+        }
+      });
       allFeatures = data.features;
       renderFeatureList(allFeatures);
       updateScaleInfo();
@@ -214,66 +217,67 @@
       const hole = featureAssignments[id];
       const div = document.createElement('div');
       div.className = 'feature-item' + (hole ? ' assigned' : '');
-      div.innerHTML = `<span class="type-badge type-${type}">${type}</span>${hole ? 'Hole ' + hole : 'unassigned'} <small style="color:#888">#${id}</small>`;
+      const holeBadge = hole ? `<span style="display:inline-block;padding:1px 8px;background:#4CAF50;color:white;border-radius:3px;font-size:10px;margin-right:6px;">H${hole}</span>` : '';
+      div.innerHTML = `${holeBadge}<span class="type-badge type-${type}">${type}</span> <small style="color:#888">#${id}</small>`;
       div.onclick = () => {
-        if (layers[id]) {
-          map.setView(layers[id].getBounds ? layers[id].getBounds().getCenter() : layers[id].getLatLng(), 18);
+        if (hole) {
+          delete featureAssignments[id];
+          if (layers[id]) {
+            map.addLayer(layers[id]);
+          }
+          renderFeatureList(allFeatures);
+        } else {
+          if (currentHole >= 1 && currentHole <= 18) {
+            featureAssignments[id] = currentHole;
+            if (layers[id]) {
+              map.removeLayer(layers[id]);
+            }
+            renderFeatureList(allFeatures);
+          }
+          if (layers[id]) {
+            map.setView(layers[id].getBounds ? layers[id].getBounds().getCenter() : layers[id].getLatLng(), 18);
+          }
         }
-        selectedFeatureId = id;
-        document.getElementById('popup-modal').classList.add('active');
-        document.getElementById('hole-input').value = featureAssignments[id] || '';
-        document.getElementById('hole-input').focus();
       };
       list.appendChild(div);
     });
   }
 
-  document.getElementById('btn-assign').onclick = () => {
-    const val = parseInt(document.getElementById('hole-input').value);
-    if (val >= 1 && val <= 18 && selectedFeatureId) {
-      featureAssignments[selectedFeatureId] = val;
-      document.getElementById('popup-modal').classList.remove('active');
-      fetch('/api/features').then(r => r.json()).then(d => renderFeatureList(d.features));
-    }
-  };
-
-  document.getElementById('hole-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('btn-assign').click();
-    if (e.key === 'Escape') document.getElementById('popup-modal').classList.remove('active');
-  });
-  document.getElementById('btn-cancel-popup').onclick = () =>
-    document.getElementById('popup-modal').classList.remove('active');
 
   // Scale tool
   document.getElementById('btn-scale').onclick = () => {
+    if (scaleMode) {
+      scaleMode = false;
+      scaleMarkers.forEach(m => map.removeLayer(m));
+      scaleMarkers = [];
+      scalePoints = [];
+      document.getElementById('btn-scale').textContent = 'Set Scale (2-point)';
+      document.getElementById('scale-input-area').style.display = 'none';
+      return;
+    }
     scaleMode = true;
     scalePoints = [];
     scaleMarkers.forEach(m => map.removeLayer(m));
     scaleMarkers = [];
-    document.getElementById('scale-modal').classList.add('active');
-    document.getElementById('scale-step-info').textContent = 'Step 1: Click the first reference point on the map.';
-    document.getElementById('distance-input').style.display = 'none';
-    document.getElementById('btn-confirm-scale').style.display = 'none';
+    document.getElementById('btn-scale').textContent = 'Choosing point 1...';
+    document.getElementById('scale-input-area').style.display = 'none';
   };
 
-  function handleScaleClick(latlng) {
-    if (scalePoints.length < 2) {
-      scalePoints.push([latlng.lat, latlng.lng]);
-      const marker = L.circleMarker(latlng, {radius: 6, color: '#1565C0', fillColor: '#1565C0', fillOpacity: 1}).addTo(map);
-      scaleMarkers.push(marker);
-    }
+  map.on('click', e => {
+    if (!scaleMode) return;
+    if (scalePoints.length >= 2) return;
+    scalePoints.push([e.latlng.lat, e.latlng.lng]);
+    const marker = L.circleMarker(e.latlng, {radius: 6, color: '#1565C0', fillColor: '#1565C0', fillOpacity: 1}).addTo(map);
+    scaleMarkers.push(marker);
     if (scalePoints.length === 1) {
-      document.getElementById('scale-step-info').textContent = 'Step 2: Click the second reference point.';
+      document.getElementById('btn-scale').textContent = 'Choosing point 2...';
     } else if (scalePoints.length === 2) {
-      document.getElementById('scale-step-info').textContent = 'Enter the real-world distance between these two points (yards):';
-      document.getElementById('distance-input').style.display = 'block';
+      document.getElementById('btn-scale').textContent = 'Set Scale (active)';
+      document.getElementById('scale-input-area').style.display = 'block';
+      document.getElementById('distance-input').value = '';
       document.getElementById('distance-input').focus();
-      document.getElementById('btn-confirm-scale').style.display = 'block';
-      scaleMode = false;
     }
-  }
-
-  map.on('click', e => { if (scaleMode) handleScaleClick(e.latlng); });
+  });
 
   document.getElementById('btn-confirm-scale').onclick = () => {
     const dist = parseFloat(document.getElementById('distance-input').value);
@@ -288,17 +292,23 @@
         reference_point_b: scalePoints[1],
         reference_distance_yards: dist,
       };
-      document.getElementById('scale-modal').classList.remove('active');
+      scaleMode = false;
+      scaleMarkers.forEach(m => map.removeLayer(m));
+      scaleMarkers = [];
+      scalePoints = [];
+      document.getElementById('btn-scale').textContent = 'Set Scale (2-point)';
+      document.getElementById('scale-input-area').style.display = 'none';
       updateScaleInfo();
     }
   };
 
-  document.getElementById('btn-cancel-scale').onclick = () => {
+  document.getElementById('btn-cancel-scale-2').onclick = () => {
     scaleMode = false;
     scaleMarkers.forEach(m => map.removeLayer(m));
     scaleMarkers = [];
     scalePoints = [];
-    document.getElementById('scale-modal').classList.remove('active');
+    document.getElementById('btn-scale').textContent = 'Set Scale (2-point)';
+    document.getElementById('scale-input-area').style.display = 'none';
   };
 
   function updateScaleInfo() {
@@ -325,7 +335,7 @@
         const hole = featureAssignments[id];
         if (!hole) return;
         const hk = String(hole);
-        if (!holes[hk]) holes[hk] = {fairway:[], green:[], bunkers:[], tee_boxes:{}, water:[], rough_boundary:[]};
+        if (!holes[hk]) holes[hk] = {fairway:[], green:[], bunkers:[], tee_boxes:{}, water:[], paths:[], rough_boundary:[]};
         const type = f.properties.type;
         const geom = f.geometry;
         if (geom.type === 'Point') {
@@ -338,6 +348,10 @@
           else if (type === 'bunker') holes[hk].bunkers.push(ring);
           else if (type === 'water') holes[hk].water.push(ring);
           else if (type === 'rough') holes[hk].rough_boundary.push(ring);
+          else if (type === 'tee') holes[hk].rough_boundary.push(ring);
+        } else if (geom.type === 'LineString') {
+          const line = geom.coordinates.map(c => [c[1], c[0]]);
+          if (type === 'path') holes[hk].paths.push(line);
         }
       });
 

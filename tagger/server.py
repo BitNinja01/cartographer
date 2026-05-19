@@ -42,11 +42,18 @@ def start_tagger(course_name: str, osm_path: Path) -> threading.Event:
                 })
             else:
                 coords = [[pt[1], pt[0]] for pt in f["geometry"]]
-                geojson_features.append({
-                    "type": "Feature",
-                    "geometry": {"type": "Polygon", "coordinates": [coords]},
-                    "properties": {"osm_id": f["osm_id"], "type": f["type"], "tags": f["tags"]},
-                })
+                if f["type"] == "path":
+                    geojson_features.append({
+                        "type": "Feature",
+                        "geometry": {"type": "LineString", "coordinates": coords},
+                        "properties": {"osm_id": f["osm_id"], "type": f["type"], "tags": f["tags"]},
+                    })
+                else:
+                    geojson_features.append({
+                        "type": "Feature",
+                        "geometry": {"type": "Polygon", "coordinates": [coords]},
+                        "properties": {"osm_id": f["osm_id"], "type": f["type"], "tags": f["tags"]},
+                    })
         return jsonify({
             "type": "FeatureCollection",
             "features": geojson_features,

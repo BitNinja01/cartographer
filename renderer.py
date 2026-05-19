@@ -115,7 +115,7 @@ def render_green(green_geom: dict, canvas_size: float = 200.0) -> str:
     )
 
     # Fit the green into the canvas
-    fitted, _, _ = fit_hole(
+    fitted, _, _, _ = fit_hole(
         {"green": green_geom.get("green", []),
          "fairway": [], "bunkers": [], "water": [], "rough_boundary": [], "tee_boxes": {}},
         canvas_size, canvas_size, padding=15.0,
@@ -163,21 +163,22 @@ def render_hole_svg(course_name: str, hole_number: int, settings: dict | None = 
     projected = project_course(holes, scale_data)
     hole_geom = projected.get(hole_key, {})
 
-    fitted, _, _ = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H)
+    fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H)
 
-    # Attach arc data to fitted geom using pixels_per_yard from scale_data
+    # Attach arc data to fitted geom using pixels_per_yard from scale_data.
+    # ppy is in raw projected-pixel space; scale is fit_hole's shrink factor.
     ppy = float(scale_data.get("pixels_per_yard", 1.0))
     if settings is None:
         settings = {}
     if settings.get("cartographer.yardage_arcs", True):
-        distances = settings.get("cartographer.yardage_arc_distances", [100, 125, 150, 175, 200])
+        distances = settings.get("cartographer.yardage_arc_distances", [100, 125, 150])
         green_rings = fitted.get("green", [])
         if green_rings:
             all_pts = [pt for ring in green_rings for pt in ring]
             if all_pts:
                 gcx = sum(p[0] for p in all_pts) / len(all_pts)
                 gcy = sum(p[1] for p in all_pts) / len(all_pts)
-                fitted["_arcs"] = [(gcx, gcy, d * ppy) for d in distances]
+                fitted["_arcs"] = [(gcx, gcy, d * ppy * scale) for d in distances]
 
     return render_hole(fitted, settings=settings)
 
