@@ -9,7 +9,7 @@ from __future__ import annotations
 import svgwrite
 
 from cartographer.data import load_courses_geo
-from cartographer.geometry import project_course, fit_hole
+from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry, chaikin_smooth
 
 # Feature render colours — (stroke, fill)
 _COLOURS = {
@@ -89,15 +89,23 @@ def render_hole(
 
     # Yardage arcs
     if settings.get("cartographer.yardage_arcs", True):
-        for arc_data in hole_geom.get("_arcs", []):
-            cx, cy, r = arc_data
+        arcs = hole_geom.get("_arcs", [])
+        for cx, cy, r in arcs:
             dwg.add(dwg.circle(
                 center=(float(cx), float(cy)),
                 r=float(r),
                 fill="none",
-                stroke="#666",
+                stroke="#000000",
                 stroke_width=0.25,
                 stroke_dasharray="3,3",
+            ))
+        if arcs:
+            cx, cy = arcs[0][0], arcs[0][1]
+            dwg.add(dwg.circle(
+                center=(float(cx), float(cy)),
+                r=1.5,
+                fill="#000000",
+                stroke="none",
             ))
 
     return dwg.tostring()
@@ -120,6 +128,7 @@ def render_green(green_geom: dict, canvas_size: float = 200.0) -> str:
          "fairway": [], "bunkers": [], "water": [], "rough_boundary": [], "tee_boxes": {}},
         canvas_size, canvas_size, padding=15.0,
     )
+    fitted["green"] = [chaikin_smooth(r) for r in fitted.get("green", [])]
 
     stroke_col, fill_col = _COLOURS["green"]
     g = dwg.g()
@@ -162,6 +171,7 @@ def render_hole_svg(course_name: str, hole_number: int, settings: dict | None = 
 
     projected = project_course(holes, scale_data)
     hole_geom = projected.get(hole_key, {})
+    hole_geom = smooth_hole_geometry(hole_geom)
 
     fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H)
 

@@ -14,7 +14,7 @@ import cairosvg
 from pypdf import PdfWriter, PdfReader
 
 from cartographer.data import load_courses_geo
-from cartographer.geometry import project_course, fit_hole
+from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry
 from cartographer.renderer import render_hole, render_green
 from cartographer.layout import compose_page, CROSS_PAIRS, PAGE_W, HOLE_H, GREEN_H
 
@@ -65,6 +65,7 @@ def generate_book(
     for hole_num in range(1, 19):
         hole_key = str(hole_num)
         hole_geom = projected.get(hole_key, {})
+        hole_geom = smooth_hole_geometry(hole_geom)
 
         # Get tee yardages for this hole
         hole_ps_data = course_ps.get("holes", {}).get(hole_key, {})
@@ -73,7 +74,7 @@ def generate_book(
         }
 
         # Fit and render
-        fitted, _, _ = fit_hole(hole_geom, PAGE_W, HOLE_H)
+        fitted, _, _, scale = fit_hole(hole_geom, PAGE_W, HOLE_H)
 
         # Attach arcs
         ppy = float(scale_data.get("pixels_per_yard", 1.0))
@@ -85,12 +86,12 @@ def generate_book(
                 if all_pts:
                     gcx = sum(p[0] for p in all_pts) / len(all_pts)
                     gcy = sum(p[1] for p in all_pts) / len(all_pts)
-                    fitted["_arcs"] = [(gcx, gcy, d * ppy) for d in distances]
+                    fitted["_arcs"] = [(gcx, gcy, d * ppy * scale) for d in distances]
 
         par = int(hole_ps_data.get("par", 4))
         hole_svgs[hole_num] = render_hole(fitted, settings=settings)
 
-        green_fitted, _, _ = fit_hole(hole_geom, GREEN_H, GREEN_H, padding=10.0)
+        green_fitted, _, _, _ = fit_hole(hole_geom, GREEN_H, GREEN_H, padding=10.0)
         green_svgs[hole_num] = render_green({"green": green_fitted.get("green", [])})
 
     # Compose and export 20 narrow PDFs
