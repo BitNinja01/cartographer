@@ -16,6 +16,7 @@ _COLOURS = {
     "rough_boundary": ("#000000", "#a8d1de"),
     "fairway":        ("#000000", "#ccebb0"),
     "water":          ("#000000", "#a8d1de"),
+    "path":           ("#000000", "#d4c9a8"),
     "bunkers":        ("#000000", "#f5e8c5"),
     "green":          ("#000000", "#87debd"),
 }
@@ -69,8 +70,8 @@ def render_hole(
     dwg = svgwrite.Drawing(size=(f"{canvas_w}pt", f"{canvas_h}pt"),
                            viewBox=f"0 0 {canvas_w} {canvas_h}")
 
-    # Render order: rough → fairway → water → bunkers → green → tees → arcs
-    for feature_type in ("rough_boundary", "fairway", "water", "bunkers", "green"):
+    # Render order: rough → fairway → water → path → bunkers → green → tees → arcs
+    for feature_type in ("rough_boundary", "fairway", "water", "path", "bunkers", "green"):
         stroke_col, fill_col = _COLOURS[feature_type]
         rings = hole_geom.get(feature_type, [])
         g = dwg.g()
@@ -140,11 +141,11 @@ def render_green(green_geom: dict, canvas_size: float = 200.0) -> str:
     for i in range(1, 6):
         dwg.add(dwg.line(
             start=(i * grid_step, 0), end=(i * grid_step, canvas_size),
-            stroke="#ccc", stroke_width=0.3,
+            stroke="#000000", stroke_width=0.3,
         ))
         dwg.add(dwg.line(
             start=(0, i * grid_step), end=(canvas_size, i * grid_step),
-            stroke="#ccc", stroke_width=0.3,
+            stroke="#000000", stroke_width=0.3,
         ))
 
     return dwg.tostring()

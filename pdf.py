@@ -1,7 +1,7 @@
 # plugins/cartographer/pdf.py
 """PDF export for Cartographer yardage books.
 
-Generates 20 narrow PDFs (4.25" x 14") and combines them into
+Generates 21 narrow PDFs (4.25" x 14") and combines them into
 5 saddle-stitch booklet PDFs (8.5" x 14") using pypdf.
 """
 from __future__ import annotations
@@ -14,9 +14,15 @@ import cairosvg
 from pypdf import PdfWriter, PdfReader, Transformation
 
 from cartographer.data import load_courses_geo
-from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry
+from cartographer.geometry import (
+    project_course, fit_hole, smooth_hole_geometry,
+    get_green_centroid, compute_yardage_arcs,
+)
 from cartographer.renderer import render_hole, render_green
-from cartographer.layout import compose_page, PAGE_W, SLOT_H
+from cartographer.layout import (
+    compose_page, compose_front_page, compose_back_page, compose_notes_page,
+    PAGE_W, SLOT_H
+)
 
 HOLE_CANVAS_W = 306.0   # 4.25 * 72
 HOLE_CANVAS_H = 504.0   # 7" for hole diagram section
@@ -64,6 +70,14 @@ def generate_book(
     import json
     pinsheet_courses = json.loads(courses_json.read_text()) if courses_json.exists() else {}
     course_ps = pinsheet_courses.get(course_name, {})
+
+    # Compute course-level metadata for front/back pages
+    total_par = 0
+    tee_totals: dict[str, int] = {}
+    for hk, hd in course_ps.get("holes", {}).items():
+        total_par += int(hd.get("par", 4))
+        for tee, yrd in hd.get("tees", {}).items():
+            tee_totals[tee] = tee_totals.get(tee, 0) + int(yrd)
 
     # Load rounds data for stats (if needed)
     rounds_by_hole = {}
@@ -119,20 +133,26 @@ def generate_book(
     scale_data = course_geo.get("scale", {})
     projected = project_course(holes_geo, scale_data)
 
-    # Generate 20 narrow PDFs (one per hole + front/back covers)
+    # Generate 21 narrow PDFs (front cover + 18 holes + scorecard + back cover)
     output_dir.mkdir(parents=True, exist_ok=True)
     narrow_pdfs: list[bytes] = []
 
-    for page_idx in range(1, 21):
+    for page_idx in range(0, 21):
         if progress_callback:
-            progress_callback(page_idx, 20)
+            progress_callback(page_idx + 1, 21)
         
-        if page_idx == 20:
-            # Back cover (blank page)
-            import svgwrite as svg
-            dwg = svg.Drawing(size=("306pt", "1008pt"), viewBox="0 0 306 1008")
-            dwg.add(dwg.rect(insert=(0, 0), size=(306, 1008), fill="white"))
-            svg_str = dwg.tostring()
+        if page_idx == 0:
+            svg_str = compose_front_page(
+                course_name=course_name,
+                location=course_ps.get("location"),
+                total_par=total_par,
+                tee_totals=tee_totals,
+            )
+        elif page_idx == 19:
+            # Scorecard/notes page
+            svg_str = compose_notes_page(title="Scorecard")
+        elif page_idx == 20:
+            svg_str = compose_back_page()
         else:
             hole_num = page_idx
             hole_key = str(hole_num)
@@ -155,13 +175,8 @@ def generate_book(
                 ppy = float(scale_data.get("pixels_per_yard", 1.0))
                 if settings.get("cartographer.yardage_arcs", True):
                     distances = settings.get("cartographer.yardage_arc_distances", [100, 125, 150])
-                    green_rings = fitted.get("green", [])
-                    if green_rings:
-                        all_pts = [pt for ring in green_rings for pt in ring]
-                        if all_pts:
-                            gcx = sum(p[0] for p in all_pts) / len(all_pts)
-                            gcy = sum(p[1] for p in all_pts) / len(all_pts)
-                            fitted["_arcs"] = [(gcx, gcy, d * ppy * scale) for d in distances]
+                    gcx, gcy = get_green_centroid(fitted)
+                    fitted["_arcs"] = compute_yardage_arcs((gcx, gcy), distances, ppy, scale)
                 
                 hole_svg = render_hole(fitted, settings=settings)
                 
@@ -201,11 +216,11 @@ def generate_book(
     # Combine into 5 saddle-stitch booklets, each with two 8.5"x14" pages
     # Each page has two narrow PDFs merged side-by-side
     booklet_pages = [
-        ([0, 1], [10, 11]),   # Booklet 1: pages (9,8) and (10,11)
-        ([2, 3], [12, 13]),   # Booklet 2: pages (7,6) and (12,13)
-        ([4, 5], [14, 15]),   # Booklet 3: pages (5,4) and (14,15)
-        ([6, 7], [16, 17]),   # Booklet 4: pages (3,2) and (16,17)
-        ([8, 9], [18, 19]),   # Booklet 5: pages (1,scorecard) and (18,back)
+        ([1, 2], [11, 12]),
+        ([3, 4], [13, 14]),
+        ([5, 6], [15, 16]),
+        ([7, 8], [17, 18]),
+        ([9, 10], [19, 20]),
     ]
 
     for booklet_idx, (left_pair, right_pair) in enumerate(booklet_pages, start=1):
@@ -216,7 +231,7 @@ def generate_book(
             left_pdf = PdfReader(io.BytesIO(narrow_pdfs[pair[0]])).pages[0]
             right_pdf = PdfReader(io.BytesIO(narrow_pdfs[pair[1]])).pages[0]
             page.merge_transformed_page(left_pdf, Transformation().translate(0, 0))
-            page.merge_transformed_page(right_pdf, Transformation().translate(306, 0))
+            page.merge_transformed_page(right_pdf, Transformation().translate(PAGE_W, 0))
 
         booklet_path = output_dir / f"yardage_book_booklet_{booklet_idx:02d}.pdf"
         with open(booklet_path, "wb") as f:

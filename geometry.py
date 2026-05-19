@@ -170,7 +170,7 @@ def get_green_centroid(hole_geom: dict) -> tuple[float, float]:
     union = polys[0]
     for p in polys[1:]:
         union = union.union(p)
-    c = union.centroid
+    c = union.representative_point()
     return c.x, c.y
 
 
@@ -260,3 +260,41 @@ def compute_yardage_arcs(
         (cx, cy, dist * pixels_per_yard * scale_factor)
         for dist in distances_yards
     ]
+
+
+def chaikin_smooth(ring: list[tuple[float, float]], iterations: int = 3) -> list[tuple[float, float]]:
+    """Smooth a closed polygon ring using Chaikin's corner-cutting algorithm.
+    
+    Each iteration subdivides edges and cuts corners, converging toward
+    a cubic B-spline. 2-3 iterations usually suffice.
+    """
+    if len(ring) < 3:
+        return ring
+    
+    points = ring
+    for _ in range(iterations):
+        n = len(points)
+        smoothed = []
+        for i in range(n):
+            p0_x, p0_y = points[i]
+            p1_x, p1_y = points[(i + 1) % n]
+            q = (0.75 * p0_x + 0.25 * p1_x, 0.75 * p0_y + 0.25 * p1_y)
+            r = (0.25 * p0_x + 0.75 * p1_x, 0.25 * p0_y + 0.75 * p1_y)
+            smoothed.append(q)
+            smoothed.append(r)
+        points = smoothed
+    
+    return points
+
+
+def smooth_hole_geometry(hole_geom: dict, iterations: int = 3) -> dict:
+    """Apply Chaikin smoothing to all polygon rings in a hole geometry dict.
+    
+    Tee box points are passed through unchanged.
+    """
+    smoothed = {}
+    for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary"):
+        rings = hole_geom.get(feature_type, [])
+        smoothed[feature_type] = [chaikin_smooth(ring, iterations) for ring in rings]
+    smoothed["tee_boxes"] = hole_geom.get("tee_boxes", {})
+    return smoothed

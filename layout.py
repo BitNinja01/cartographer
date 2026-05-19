@@ -20,6 +20,12 @@ TOP_HALF_H = 486.0   # 6.75 * 72
 BOTTOM_HALF_H = 486.0
 SLOT_H = 243.0       # half of bottom half
 
+TEE_DISPLAY_ORDER = ["red", "gold", "white", "blue", "black", "green"]
+TEE_COLOUR_MAP = {
+    "blue": "#1565C0", "white": "#555", "red": "#C62828",
+    "gold": "#F9A825", "black": "#212121", "green": "#2E7D32",
+}
+
 
 def compose_page(
     hole_svg: str,
@@ -49,34 +55,41 @@ def compose_page(
     ))
 
     # Overlay: hole number + par (upper-right)
+    # Hole number (reduced to 16pt, no bold)
+    hole_num_x = PAGE_W - MARGIN - 20
+    hole_num_y = MARGIN + 20
     dwg.add(dwg.text(
         str(hole_num),
-        insert=(PAGE_W - MARGIN - 10, MARGIN + 35),
-        font_size="32pt",
-        font_weight="bold",
+        insert=(hole_num_x, hole_num_y),
+        font_size="16pt",
         font_family="JetBrainsMono, monospace",
         fill="#212121",
         text_anchor="end",
     ))
+    
+    # Par in circle below hole number
+    circle_cx = hole_num_x - 10
+    circle_cy = hole_num_y + 18
+    circle_r = 12
+    dwg.add(dwg.circle(
+        center=(circle_cx, circle_cy),
+        r=circle_r,
+        fill="white",
+        stroke="#000000",
+        stroke_width=1.0,
+    ))
     dwg.add(dwg.text(
-        f"Par {par}",
-        insert=(PAGE_W - MARGIN - 10, MARGIN + 52),
-        font_size="9pt",
+        str(par),
+        insert=(circle_cx, circle_cy + 4),
+        font_size="11pt",
         font_family="JetBrainsMono, monospace",
-        fill="#555",
-        text_anchor="end",
+        fill="#212121",
+        text_anchor="middle",
     ))
 
     # Overlay: tee yardages (bottom-right, sorted shortest to longest)
-    tee_display_order = ["red", "gold", "white", "blue", "black", "green"]
-    tee_colour_map = {
-        "blue": "#1565C0", "white": "#555", "red": "#C62828",
-        "gold": "#F9A825", "black": "#212121", "green": "#2E7D32",
-    }
-
-    # Sort tees by yardage (shortest first)
     sorted_tees = sorted(
-        [(name, tee_yardages[name]) for name in tee_display_order if name in tee_yardages],
+        [(name, tee_yardages[name]) for name in TEE_DISPLAY_ORDER if name in tee_yardages],
         key=lambda x: x[1]
     )
 
@@ -84,7 +97,7 @@ def compose_page(
     bg_height = 11
     y_tee = MARGIN + TOP_HALF_H - 15 - (len(sorted_tees) * 13)
     for tee_name, yardage in sorted_tees:
-        col = tee_colour_map.get(tee_name, "#333")
+        col = TEE_COLOUR_MAP.get(tee_name, "#333")
         dwg.add(dwg.rect(
             insert=(PAGE_W - MARGIN - 10 - bg_width, y_tee - 9),
             size=(bg_width, bg_height),
@@ -209,3 +222,201 @@ def _render_slot(
                 stroke_width=0.5,
             ))
             line_y += line_spacing
+
+
+def compose_front_page(
+    course_name: str,
+    location: dict[str, str] | None = None,
+    total_par: int = 0,
+    tee_totals: dict[str, int] | None = None,
+) -> str:
+    dwg = svgwrite.Drawing(
+        size=(f"{PAGE_W}pt", f"{PAGE_H}pt"),
+        viewBox=f"0 0 {PAGE_W} {PAGE_H}",
+    )
+
+    dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, PAGE_H), fill="white"))
+
+    name_y = PAGE_H / 3
+    dwg.add(dwg.text(
+        course_name,
+        insert=(PAGE_W / 2, name_y),
+        font_size="24pt",
+        font_weight="bold",
+        font_family="JetBrainsMono, monospace",
+        fill="#212121",
+        text_anchor="middle",
+    ))
+
+    loc_str = ""
+    if location:
+        city = location.get("city", "")
+        state = location.get("state") or location.get("state/province", "")
+        country = location.get("country", "")
+        parts = [p for p in [city, state, country] if p]
+        loc_str = ", ".join(parts)
+    if loc_str:
+        dwg.add(dwg.text(
+            loc_str,
+            insert=(PAGE_W / 2, name_y + 36),
+            font_size="11pt",
+            font_family="JetBrainsMono, monospace",
+            fill="#555",
+            text_anchor="middle",
+        ))
+
+    par_y = name_y + (36 if loc_str else 0) + 30
+    dwg.add(dwg.text(
+        f"Par {total_par}",
+        insert=(PAGE_W / 2, par_y),
+        font_size="14pt",
+        font_family="JetBrainsMono, monospace",
+        fill="#212121",
+        text_anchor="middle",
+    ))
+
+    if tee_totals:
+        sorted_tees = sorted(
+            [(n, tee_totals[n]) for n in TEE_DISPLAY_ORDER if n in tee_totals],
+            key=lambda x: x[1],
+        )
+        table_y = par_y + 40
+        for tee_name, yardage in sorted_tees:
+            col = TEE_COLOUR_MAP.get(tee_name, "#333")
+            dwg.add(dwg.rect(
+                insert=(PAGE_W / 2 - 60, table_y - 7),
+                size=(8, 8),
+                fill=col,
+                stroke="none",
+            ))
+            dwg.add(dwg.text(
+                f"{tee_name.upper()} : {yardage}",
+                insert=(PAGE_W / 2, table_y),
+                font_size="11pt",
+                font_family="JetBrainsMono, monospace",
+                fill="#212121",
+                text_anchor="middle",
+            ))
+            table_y += 18
+
+    return dwg.tostring()
+
+
+def compose_back_page(
+    full_course_svg: str | None = None,
+) -> str:
+    dwg = svgwrite.Drawing(
+        size=(f"{PAGE_W}pt", f"{PAGE_H}pt"),
+        viewBox=f"0 0 {PAGE_W} {PAGE_H}",
+    )
+
+    dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, PAGE_H), fill="white"))
+
+    if full_course_svg:
+        dwg.add(dwg.image(
+            href="data:image/svg+xml," + full_course_svg.replace("#", "%23"),
+            insert=(MARGIN, MARGIN),
+            size=(PRINTABLE_W, PAGE_H * 2 / 3),
+        ))
+
+    dwg.add(dwg.text(
+        "PinSheet",
+        insert=(PAGE_W / 2, PAGE_H - MARGIN - 20),
+        font_size="18pt",
+        font_family="JetBrainsMono, monospace",
+        fill="#212121",
+        text_anchor="middle",
+    ))
+
+    return dwg.tostring()
+
+
+def compose_chart_page(
+    title: str = "Club Distances",
+) -> str:
+    dwg = svgwrite.Drawing(
+        size=(f"{PAGE_W}pt", f"{PAGE_H}pt"),
+        viewBox=f"0 0 {PAGE_W} {PAGE_H}",
+    )
+
+    dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, PAGE_H), fill="white"))
+
+    dwg.add(dwg.text(
+        title,
+        insert=(PAGE_W / 2, MARGIN + 35),
+        font_size="14pt",
+        font_weight="bold",
+        font_family="JetBrainsMono, monospace",
+        fill="#212121",
+        text_anchor="middle",
+    ))
+
+    cols = 4
+    rows = 15
+    headers = ["Club", "Carry", "Total", "Notes"]
+    grid_top = MARGIN + 55
+    grid_bottom = PAGE_H - MARGIN
+    grid_left = MARGIN
+    grid_right = PAGE_W - MARGIN
+    gw = grid_right - grid_left
+    gh = grid_bottom - grid_top
+    cw = gw / cols
+    rh = gh / rows
+
+    for row in range(rows):
+        for col in range(cols):
+            x = grid_left + col * cw
+            y = grid_top + row * rh
+            dwg.add(dwg.rect(
+                insert=(x, y),
+                size=(cw, rh),
+                fill="white",
+                stroke="#ccc",
+                stroke_width=0.5,
+            ))
+            if row == 0:
+                dwg.add(dwg.text(
+                    headers[col],
+                    insert=(x + cw / 2, y + rh / 2 + 4),
+                    font_size="11pt",
+                    font_family="JetBrainsMono, monospace",
+                    fill="#555",
+                    text_anchor="middle",
+                ))
+
+    return dwg.tostring()
+
+
+def compose_notes_page(
+    title: str = "Notes",
+) -> str:
+    dwg = svgwrite.Drawing(
+        size=(f"{PAGE_W}pt", f"{PAGE_H}pt"),
+        viewBox=f"0 0 {PAGE_W} {PAGE_H}",
+    )
+
+    dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, PAGE_H), fill="white"))
+
+    dwg.add(dwg.text(
+        title,
+        insert=(PAGE_W / 2, MARGIN + 35),
+        font_size="14pt",
+        font_weight="bold",
+        font_family="JetBrainsMono, monospace",
+        fill="#212121",
+        text_anchor="middle",
+    ))
+
+    line_spacing = 18.0
+    margin_x = 12.0
+    line_y = MARGIN + 55
+    while line_y < PAGE_H - MARGIN - 6:
+        dwg.add(dwg.line(
+            start=(MARGIN + margin_x, line_y),
+            end=(PAGE_W - MARGIN - margin_x, line_y),
+            stroke="#ddd",
+            stroke_width=0.5,
+        ))
+        line_y += line_spacing
+
+    return dwg.tostring()
