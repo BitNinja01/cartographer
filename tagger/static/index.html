@@ -75,12 +75,25 @@
       width: 100%; padding: 6px; background: #333; border: 1px solid #555;
       color: white; font-family: monospace; border-radius: 3px; font-size: 14px;
     }
+    #type-filters { padding: 8px 16px; border-bottom: 1px solid #444; }
+    #type-filters label { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; font-size: 11px; cursor: pointer; }
+    #type-filters input[type=checkbox] { accent-color: #4CAF50; }
+    .feature-item.hidden { display: none; }
   </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="sidebar">
   <h2 id="course-title">Cartographer</h2>
+  <div id="type-filters">
+    <label><input type="checkbox" checked onchange="toggleFilter('fairway', this.checked)"> <span class="type-badge type-fairway">fairway</span></label>
+    <label><input type="checkbox" checked onchange="toggleFilter('green', this.checked)"> <span class="type-badge type-green">green</span></label>
+    <label><input type="checkbox" checked onchange="toggleFilter('bunker', this.checked)"> <span class="type-badge type-bunker">bunker</span></label>
+    <label><input type="checkbox" checked onchange="toggleFilter('water', this.checked)"> <span class="type-badge type-water">water</span></label>
+    <label><input type="checkbox" checked onchange="toggleFilter('rough', this.checked)"> <span class="type-badge type-rough">rough</span></label>
+    <label><input type="checkbox" checked onchange="toggleFilter('tee', this.checked)"> <span class="type-badge type-tee">tee</span></label>
+    <label><input type="checkbox" checked onchange="toggleFilter('unclassified', this.checked)"> <span class="type-badge type-unclassified">other</span></label>
+  </div>
   <div id="feature-list"></div>
   <div id="controls">
     <div id="scale-info">Scale: not set</div>
@@ -128,6 +141,18 @@
 
   let featureAssignments = {};
   let scaleData = null;
+  const activeFilters = new Set(['fairway','green','bunker','water','rough','tee','unclassified']);
+  let allFeatures = [];
+
+  function toggleFilter(type, visible) {
+    visible ? activeFilters.add(type) : activeFilters.delete(type);
+    Object.entries(layers).forEach(([id, layer]) => {
+      if (layer.feature && layer.feature.properties.type === type) {
+        visible ? map.addLayer(layer) : map.removeLayer(layer);
+      }
+    });
+    renderFeatureList(allFeatures);
+  }
   let selectedFeatureId = null;
   let scaleMode = false;
   let scalePoints = [];
@@ -174,7 +199,8 @@
       }).addTo(map);
 
       map.fitBounds(geojsonLayer.getBounds().pad(0.1));
-      renderFeatureList(data.features);
+      allFeatures = data.features;
+      renderFeatureList(allFeatures);
       updateScaleInfo();
     });
 
@@ -184,6 +210,7 @@
     features.forEach(f => {
       const id = f.properties.osm_id;
       const type = f.properties.type;
+      if (!activeFilters.has(type)) return;
       const hole = featureAssignments[id];
       const div = document.createElement('div');
       div.className = 'feature-item' + (hole ? ' assigned' : '');
