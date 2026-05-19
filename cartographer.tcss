@@ -1,0 +1,9 @@
+#hole-svg-widget {
+    width: auto;
+    height: auto;
+}
+
+#gallery-svg {
+    width: auto;
+    height: auto;
+}

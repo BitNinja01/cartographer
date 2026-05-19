@@ -11,14 +11,16 @@ import svgwrite
 from cartographer.data import load_courses_geo
 from cartographer.geometry import project_course, fit_hole
 
-# Feature render colours
+# Feature render colours — (stroke, fill)
 _COLOURS = {
-    "rough_boundary": ("#228B22", "#E8F5E9"),  # (stroke, fill)
-    "fairway":        ("#4CAF50", "#90EE90"),
-    "water":          ("#1565C0", "#87CEEB"),
-    "bunkers":        ("#8D6E63", "#F5DEB3"),
-    "green":          ("#00796B", "#48D1CC"),
+    "rough_boundary": ("#000000", "#a8d1de"),
+    "fairway":        ("#000000", "#ccebb0"),
+    "water":          ("#000000", "#a8d1de"),
+    "bunkers":        ("#000000", "#f5e8c5"),
+    "green":          ("#000000", "#87debd"),
 }
+
+_STROKE_WIDTH = 0.644586
 
 # Hole layout canvas size (SVG user units = points at 72dpi, 4.25" wide)
 HOLE_CANVAS_W = 306.0   # 4.25 * 72
@@ -31,9 +33,11 @@ def _draw_polygons(
     rings: list[list],
     stroke: str,
     fill: str,
-    stroke_width: float = 0.5,
+    stroke_width: float | None = None,
 ) -> None:
     """Draw a list of polygon rings onto a svgwrite group."""
+    if stroke_width is None:
+        stroke_width = _STROKE_WIDTH
     for ring in rings:
         if len(ring) < 3:
             continue
@@ -43,6 +47,7 @@ def _draw_polygons(
             stroke=stroke,
             fill=fill,
             stroke_width=stroke_width,
+            fill_rule="evenodd",
         ))
 
 
@@ -64,30 +69,22 @@ def render_hole(
     dwg = svgwrite.Drawing(size=(f"{canvas_w}pt", f"{canvas_h}pt"),
                            viewBox=f"0 0 {canvas_w} {canvas_h}")
 
-    # Background
-    dwg.add(dwg.rect(insert=(0, 0), size=(canvas_w, canvas_h), fill="white"))
-
     # Render order: rough → fairway → water → bunkers → green → tees → arcs
     for feature_type in ("rough_boundary", "fairway", "water", "bunkers", "green"):
-        stroke_col, fill_col = _COLOURS.get(feature_type, ("#000", "#fff"))
+        stroke_col, fill_col = _COLOURS[feature_type]
         rings = hole_geom.get(feature_type, [])
         g = dwg.g()
         _draw_polygons(dwg, g, rings, stroke=stroke_col, fill=fill_col)
         dwg.add(g)
 
-    # Tee box markers (small circles)
-    tee_colours = {
-        "blue": "#1565C0", "white": "#F5F5F5", "red": "#C62828",
-        "gold": "#F9A825", "black": "#212121", "green": "#2E7D32",
-    }
+    # Tee box markers — same fill/stroke as rough/water
     for tee_name, (tx, ty) in hole_geom.get("tee_boxes", {}).items():
-        colour = tee_colours.get(tee_name.lower(), "#888")
         dwg.add(dwg.circle(
             center=(float(tx), float(ty)),
             r=4,
-            fill=colour,
-            stroke="#000",
-            stroke_width=0.5,
+            fill=_COLOURS["rough_boundary"][1],
+            stroke=_COLOURS["rough_boundary"][0],
+            stroke_width=_STROKE_WIDTH,
         ))
 
     # Yardage arcs
@@ -116,7 +113,6 @@ def render_green(green_geom: dict, canvas_size: float = 200.0) -> str:
         size=(f"{canvas_size}pt", f"{canvas_size}pt"),
         viewBox=f"0 0 {canvas_size} {canvas_size}",
     )
-    dwg.add(dwg.rect(insert=(0, 0), size=(canvas_size, canvas_size), fill="white"))
 
     # Fit the green into the canvas
     fitted, _, _ = fit_hole(
@@ -184,3 +180,42 @@ def render_hole_svg(course_name: str, hole_number: int, settings: dict | None = 
                 fitted["_arcs"] = [(gcx, gcy, d * ppy) for d in distances]
 
     return render_hole(fitted, settings=settings)
+
+
+def svg_to_png(svg: str, target_w: int, target_h: int) -> bytes:
+    """Convert SVG string to PNG bytes, scaled to fill terminal dimensions
+    while preserving the content's natural aspect ratio."""
+    import io, cairosvg
+    from PIL import Image
+
+    png_bytes = cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=2000)
+    img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+    bbox = img.getbbox()
+    if bbox:
+        m = 40
+        bbox = (max(0, bbox[0] - m), max(0, bbox[1] - m),
+                min(img.width, bbox[2] + m), min(img.height, bbox[3] + m))
+        img = img.crop(bbox)
+
+    img_w, img_h = img.size
+    if img_w < 1 or img_h < 1:
+        out = io.BytesIO()
+        img.save(out, "PNG")
+        return out.getvalue()
+
+    img_aspect = img_w / img_h
+    target_aspect = target_w / target_h
+
+    if img_aspect > target_aspect:
+        # Image is wider than terminal — fit to target width
+        final_w = target_w
+        final_h = max(1, int(target_w / img_aspect))
+    else:
+        # Image is taller than terminal — fit to target height
+        final_h = target_h
+        final_w = max(1, int(target_h * img_aspect))
+
+    img = img.resize((final_w, final_h), Image.LANCZOS)
+    out = io.BytesIO()
+    img.save(out, "PNG")
+    return out.getvalue()
