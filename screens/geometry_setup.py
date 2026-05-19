@@ -16,11 +16,12 @@ class GeometrySetupScreen(Screen):
     """Guide through .osm file acquisition and launch the browser tagger."""
 
     BINDINGS = [
-        Binding("escape", "app.pop_screen", "Back"),
+        Binding("escape", "back", "Back"),
     ]
 
     _shutdown_event: threading.Event | None = None
     _tagger_running: bool = False
+    _cancelled: bool = False
 
     def __init__(self, course_name: str, **kwargs):
         super().__init__(**kwargs)
@@ -156,6 +157,8 @@ class GeometrySetupScreen(Screen):
             return
 
         if self._shutdown_event.is_set():
+            if self._cancelled:
+                return
             # Tagger saved — navigate to gallery
             self._shutdown_event = None
             try:
@@ -175,8 +178,9 @@ class GeometrySetupScreen(Screen):
             f"Waiting for tagger to complete{dots}"
         )
 
-    def action_escape_action(self) -> None:
+    def action_back(self) -> None:
         if self._tagger_running and self._shutdown_event is not None:
+            self._cancelled = True
             self._shutdown_event.set()
             self._shutdown_event = None
         self.app.pop_screen()
