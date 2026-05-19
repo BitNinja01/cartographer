@@ -20,16 +20,56 @@ _GOLF_TAG_MAP = {
     "water_hazard": "water",
     "rough": "rough",
     "tee": "tee",
+    "cartpath": "rough",
 }
 
+# Tag patterns for non-golf features that should be excluded entirely
+_EXCLUDE_TAGS = {"highway", "building", "amenity", "bridge", "tunnel",
+                 "railway", "power", "man_made", "leisure"}
 
-def _classify_tags(tags: dict[str, str]) -> str:
-    """Return the internal feature type for a set of OSM tags."""
+
+def _classify_tags(tags: dict[str, str]) -> str | None:
+    """Return the internal feature type, or None to exclude the feature."""
+    # Exclude obviously non-golf infrastructure
+    if any(k in _EXCLUDE_TAGS for k in tags):
+        # Allow leisure=golf_course (outer boundary) through as rough
+        if tags.get("leisure") == "golf_course":
+            return "rough"
+        return None
+
     golf = tags.get("golf", "")
     if golf in _GOLF_TAG_MAP:
         return _GOLF_TAG_MAP[golf]
+    if golf == "hole":
+        # Hole boundary markers — skip, not a renderable feature
+        return None
+
+    # Water features (multiple tagging schemes)
     if tags.get("natural") == "water":
         return "water"
+    if tags.get("waterway") in ("stream", "river", "ditch", "canal", "drain"):
+        return "water"
+    if tags.get("water"):
+        return "water"
+
+    # Natural features common on golf courses
+    natural = tags.get("natural", "")
+    if natural in ("wood", "scrub", "grassland", "tree_row", "tree"):
+        return "rough"
+    landuse = tags.get("landuse", "")
+    if landuse in ("forest", "grass"):
+        return "rough"
+    if landuse:  # Any other landuse (residential, recreation_ground, etc.) — exclude
+        return None
+
+    # Course infrastructure
+    if tags.get("barrier") in ("fence", "wall", "hedge"):
+        return "rough"
+
+    # No relevant tags — exclude
+    if not tags:
+        return None
+
     return "unclassified"
 
 
@@ -72,6 +112,8 @@ def parse_osm_file(path: Path) -> list[dict]:
         osm_id = way.get("id", "")
         tags = {tag.get("k", ""): tag.get("v", "") for tag in way.findall("tag")}
         feature_type = _classify_tags(tags)
+        if feature_type is None:
+            continue
 
         node_ids = [nd.get("ref", "") for nd in way.findall("nd")]
         ring = _nodes_to_ring(node_ids, node_coords)
