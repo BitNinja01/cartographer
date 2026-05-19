@@ -7,3 +7,72 @@
     width: auto;
     height: auto;
 }
+
+/* PDF Export Screen */
+#pdf-export-container {
+    width: 100%;
+    height: 100%;
+    align: center middle;
+}
+
+#pdf-export-header {
+    text-align: center;
+    text-style: bold;
+    margin: 1;
+}
+
+#pdf-export-controls {
+    width: 80;
+    height: auto;
+    align: center middle;
+    margin: 2;
+}
+
+#slot-selectors {
+    width: 50;
+    height: auto;
+}
+
+#slot-selectors Static {
+    margin-top: 1;
+}
+
+#slot-selectors Select {
+    width: 100%;
+    margin-bottom: 1;
+}
+
+#stats-checkbox {
+    margin-left: 4;
+}
+
+#generate-button {
+    width: 30;
+    margin: 2;
+}
+
+#status-widget {
+    width: 80;
+    text-align: center;
+    margin: 1;
+    color: $success;
+}
+
+/* Error Modal */
+#error-modal {
+    width: 60;
+    height: 20;
+    background: $surface;
+    border: thick $primary;
+    align: center middle;
+}
+
+#error-message {
+    width: 100%;
+    text-align: center;
+    margin: 2;
+}
+
+#error-ok {
+    width: 20;
+}
