@@ -9,7 +9,7 @@ from __future__ import annotations
 import svgwrite
 
 from cartographer.data import load_courses_geo
-from cartographer.geometry import project_course, fit_hole, get_green_centroid
+from cartographer.geometry import project_course, fit_hole
 
 # Feature render colours
 _COLOURS = {
@@ -48,7 +48,6 @@ def _draw_polygons(
 
 def render_hole(
     hole_geom: dict,
-    tee_yardages: dict | None = None,
     settings: dict | None = None,
     canvas_w: float = HOLE_CANVAS_W,
     canvas_h: float = HOLE_CANVAS_H,
@@ -56,14 +55,11 @@ def render_hole(
     """Render a fitted hole geometry dict to an SVG string.
 
     hole_geom: output of geometry.fit_hole() — pixel coordinates.
-    tee_yardages: dict of {tee_name: yardage} e.g. {"blue": 377, "white": 362}
     settings: plugin settings dict; uses 'cartographer.yardage_arcs' and
               'cartographer.yardage_arc_distances' keys.
     """
     if settings is None:
         settings = {}
-    if tee_yardages is None:
-        tee_yardages = {}
 
     dwg = svgwrite.Drawing(size=(f"{canvas_w}pt", f"{canvas_h}pt"),
                            viewBox=f"0 0 {canvas_w} {canvas_h}")
