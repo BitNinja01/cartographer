@@ -44,6 +44,9 @@ def compose_page(
     slot1_svg: str = "",  # pre-rendered SVG for slot 1 (if applicable)
     slot2_svg: str = "",  # pre-rendered SVG for slot 2 (if applicable)
     stats_data: dict | None = None,  # {hole_num: {stat_name: value}}
+    bottom_hole_num: int | None = None,  # hole number for bottom-zone stats (cross-pairing)
+    bottom_slot1_svg: str = "",  # pre-rendered SVG for bottom slot 1 (cross-pairing)
+    bottom_slot2_svg: str = "",  # pre-rendered SVG for bottom slot 2 (cross-pairing)
 ) -> str:
     dwg = svgwrite.Drawing(
         size=(f"{PAGE_W}pt", f"{PAGE_H}pt"),
@@ -126,12 +129,17 @@ def compose_page(
     slot1_y = MARGIN + TOP_HALF_H
     slot2_y = slot1_y + SLOT_H
 
+    # Use cross-paired hole number for bottom-zone stats when provided
+    slot_hole_num = bottom_hole_num if bottom_hole_num is not None else hole_num
+    s1 = bottom_slot1_svg if bottom_slot1_svg else slot1_svg
+    s2 = bottom_slot2_svg if bottom_slot2_svg else slot2_svg
+
     # Render slot 1
-    _render_slot(dwg, slot1_content, slot1_svg, stats_data, hole_num,
+    _render_slot(dwg, slot1_content, s1, stats_data, slot_hole_num,
                  MARGIN, slot1_y, PRINTABLE_W, SLOT_H)
 
     # Render slot 2
-    _render_slot(dwg, slot2_content, slot2_svg, stats_data, hole_num,
+    _render_slot(dwg, slot2_content, s2, stats_data, slot_hole_num,
                  MARGIN, slot2_y, PRINTABLE_W, SLOT_H)
 
     return dwg.tostring()

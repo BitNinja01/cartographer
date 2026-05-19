@@ -195,18 +195,26 @@ def generate_book(
             progress_callback(page_idx + 1, 20)
 
         if page_idx <= 8:
-            hole_num = 9 - page_idx
-            hd = _get_hole_render_data(
-                hole_num, projected, scale_data, settings, course_ps,
+            top_hole = 9 - page_idx
+            bottom_hole = 9 if page_idx == 0 else 18 - top_hole
+            top_hd = _get_hole_render_data(
+                top_hole, projected, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode,
             )
-            if hd:
+            bottom_hd = _get_hole_render_data(
+                bottom_hole, projected, scale_data, settings, course_ps,
+                slot1_mode, slot2_mode,
+            )
+            if top_hd:
                 svg_str = compose_page(
-                    hole_svg=hd["hole_svg"], hole_num=hole_num, par=hd["par"],
-                    tee_yardages=hd["tee_yardages"],
+                    hole_svg=top_hd["hole_svg"], hole_num=top_hole, par=top_hd["par"],
+                    tee_yardages=top_hd["tee_yardages"],
                     slot1_content=slot1_mode, slot2_content=slot2_mode,
-                    slot1_svg=hd["slot1_svg"], slot2_svg=hd["slot2_svg"],
+                    slot1_svg=top_hd["slot1_svg"], slot2_svg=top_hd["slot2_svg"],
                     stats_data=stats_data,
+                    bottom_hole_num=bottom_hole if bottom_hd else None,
+                    bottom_slot1_svg=bottom_hd["slot1_svg"] if bottom_hd else "",
+                    bottom_slot2_svg=bottom_hd["slot2_svg"] if bottom_hd else "",
                 )
             else:
                 import svgwrite as svg
@@ -234,18 +242,26 @@ def generate_book(
             svg_str = compose_stacked_page(chart_svg, bottom_svg)
 
         elif page_idx <= 17:
-            hole_num = page_idx
-            hd = _get_hole_render_data(
-                hole_num, projected, scale_data, settings, course_ps,
+            top_hole = page_idx
+            bottom_hole = 18 - top_hole
+            top_hd = _get_hole_render_data(
+                top_hole, projected, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode,
             )
-            if hd:
+            bottom_hd = _get_hole_render_data(
+                bottom_hole, projected, scale_data, settings, course_ps,
+                slot1_mode, slot2_mode,
+            )
+            if top_hd:
                 svg_str = compose_page(
-                    hole_svg=hd["hole_svg"], hole_num=hole_num, par=hd["par"],
-                    tee_yardages=hd["tee_yardages"],
+                    hole_svg=top_hd["hole_svg"], hole_num=top_hole, par=top_hd["par"],
+                    tee_yardages=top_hd["tee_yardages"],
                     slot1_content=slot1_mode, slot2_content=slot2_mode,
-                    slot1_svg=hd["slot1_svg"], slot2_svg=hd["slot2_svg"],
+                    slot1_svg=top_hd["slot1_svg"], slot2_svg=top_hd["slot2_svg"],
                     stats_data=stats_data,
+                    bottom_hole_num=bottom_hole if bottom_hd else None,
+                    bottom_slot1_svg=bottom_hd["slot1_svg"] if bottom_hd else "",
+                    bottom_slot2_svg=bottom_hd["slot2_svg"] if bottom_hd else "",
                 )
             else:
                 import svgwrite as svg
