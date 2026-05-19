@@ -45,12 +45,13 @@ class GeometrySetupScreen(Screen):
                 )
                 yield Label("", id="geometry-error")
                 yield Button("Start", variant="primary", id="geometry-start-btn")
-                yield Static("", id="geometry-status")
+            yield Static("", id="geometry-status")
 
         yield Footer()
 
     def on_mount(self) -> None:
         self.title = f"Course Geometry — {self._course_name}"
+        self.query_one("#geometry-status").display = False
         self._check_existing_geometry()
 
     def _check_existing_geometry(self) -> None:
@@ -117,11 +118,14 @@ class GeometrySetupScreen(Screen):
             )
             return
 
-        # Hide form, show running state
+        # Hide form widgets, show running state
         self._tagger_running = True
-        self.query_one("#geometry-setup-form", Vertical).display = False
-        self.query_one("Footer").display = False
+        for widget_id in ("geometry-instructions", "geometry-existing-note",
+                          "geometry-path-label", "geometry-path-input",
+                          "geometry-error", "geometry-start-btn"):
+            self.query_one(f"#{widget_id}").display = False
 
+        self.query_one("#geometry-status", Static).display = True
         self.query_one("#geometry-status", Static).update(
             "Tagger is running at [bold]http://localhost:5173[/bold]\n\n"
             "A browser should have opened. Click a feature on\n"
