@@ -6,7 +6,9 @@ course data from the OSM API via overpy.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
 from lxml import etree
 
 
@@ -56,7 +58,7 @@ def parse_osm_file(path: Path) -> list[dict]:
 
     # Build node coordinate lookup
     node_coords: dict[str, tuple[float, float]] = {}
-    for node in root.findall("node"):
+    for node in root.iter("{*}node"):
         nid = node.get("id", "")
         lat = node.get("lat")
         lon = node.get("lon")
@@ -66,7 +68,7 @@ def parse_osm_file(path: Path) -> list[dict]:
     features = []
 
     # Extract ways (polygons)
-    for way in root.findall("way"):
+    for way in root.iter("{*}way"):
         osm_id = way.get("id", "")
         tags = {tag.get("k", ""): tag.get("v", "") for tag in way.findall("tag")}
         feature_type = _classify_tags(tags)
@@ -84,7 +86,7 @@ def parse_osm_file(path: Path) -> list[dict]:
             })
 
     # Extract nodes that are golf tees (points)
-    for node in root.findall("node"):
+    for node in root.iter("{*}node"):
         tags = {tag.get("k", ""): tag.get("v", "") for tag in node.findall("tag")}
         if tags.get("golf") == "tee":
             nid = node.get("id", "")
@@ -116,11 +118,12 @@ def fetch_osm_features(course_name: str, save_path: Path) -> list[dict]:
     api = overpy.Overpass()
 
     # Step 1: Find the course boundary
+    safe_name = re.escape(course_name)
     query = f"""
     [out:xml][timeout:60];
     (
-      way["leisure"="golf_course"]["name"~"{course_name}",i];
-      relation["leisure"="golf_course"]["name"~"{course_name}",i];
+      way["leisure"="golf_course"]["name"~"^{safe_name}$",i];
+      relation["leisure"="golf_course"]["name"~"^{safe_name}$",i];
     );
     out body;
     >;
@@ -179,9 +182,10 @@ def fetch_osm_features(course_name: str, save_path: Path) -> list[dict]:
             f"[out:xml][timeout:120];("
             f'way["golf"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});'
             f'node["golf"="tee"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});'
+            f'way["natural"="water"]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});'
             f');out body;>;out skel qt;'
         )
-        with urllib.request.urlopen(url) as resp:
+        with urllib.request.urlopen(url, timeout=30) as resp:
             save_path.write_bytes(resp.read())
 
     return parse_osm_file(save_path)
