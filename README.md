@@ -1,5 +1,11 @@
 # Cartographer
 
+[![Release](https://img.shields.io/github/v/release/BitNinja01/cartographer.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/cartographer/releases)
+[![Downloads](https://img.shields.io/github/downloads/BitNinja01/cartographer/total.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/cartographer/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/BitNinja01/cartographer/ci.yml?branch=dev&style=for-the-badge&label=CI)](https://github.com/BitNinja01/cartographer/actions)
+[![Platform](https://img.shields.io/badge/Platforms-Linux%20|%20macOS%20|%20Windows-white.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/cartographer)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg?style=for-the-badge&color=green)](https://www.python.org/downloads/)
+
 A PinSheet plugin that generates yardage book PDFs from OpenStreetMap course geometry.
 
 - **Hole View** — per-hole layout diagrams in-app, showing fairways, greens, bunkers, water, and yardage arcs
