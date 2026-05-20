@@ -16,13 +16,13 @@ from pypdf import PdfWriter, PdfReader, Transformation
 from cartographer.data import load_courses_geo
 from cartographer.geometry import (
     project_course, fit_hole, smooth_hole_geometry,
-    get_green_centroid, compute_yardage_arcs,
+    get_green_centroid, get_green_rotation, compute_yardage_arcs,
 )
-from cartographer.renderer import render_hole, render_green
+from cartographer.renderer import render_hole, render_green, render_course_overview
 from cartographer.layout import (
-    compose_page, compose_front_page, compose_back_page, compose_chart_page,
-    compose_notes_page, compose_stacked_page, compose_hole_top_page,
-    compose_hole_bottom_page, PAGE_W, SLOT_H
+    compose_sheet, compose_front_page, compose_back_page, compose_chart_page,
+    compose_notes_page, render_hole_page, render_bottom_slots,
+    flip_page_svg, PAGE_W, PAGE_CONTENT_H, SLOT_H, PRINTABLE_W, MARGIN
 )
 
 HOLE_CANVAS_W = 306.0   # 4.25 * 72
@@ -70,12 +70,11 @@ def _get_hole_render_data(
 
     slot1_svg = ""
     slot2_svg = ""
+    green_rot = get_green_rotation(hole_geom)
     if slot1_mode == "green_grid":
-        green_fitted, _, _, _ = fit_hole(hole_geom, SLOT_H, SLOT_H, padding=10.0)
-        slot1_svg = render_green({"green": green_fitted.get("green", [])}, canvas_size=SLOT_H, fitted=True)
+        slot1_svg = render_green({"green": hole_geom.get("green", [])}, canvas_size=SLOT_H, rotation_deg=green_rot)
     if slot2_mode == "green_grid":
-        green_fitted, _, _, _ = fit_hole(hole_geom, SLOT_H, SLOT_H, padding=10.0)
-        slot2_svg = render_green({"green": green_fitted.get("green", [])}, canvas_size=SLOT_H, fitted=True)
+        slot2_svg = render_green({"green": hole_geom.get("green", [])}, canvas_size=SLOT_H, rotation_deg=green_rot)
 
     return {
         "hole_svg": hole_svg,
@@ -186,8 +185,14 @@ def generate_book(
     scale_data = course_geo.get("scale", {})
     projected = project_course(holes_geo, scale_data)
 
+    safe_course = course_name.lower().replace(" ", "_").replace("'", "").replace('"', "")
+
     # Generate 20 narrow PDFs in cross-paired order
     output_dir.mkdir(parents=True, exist_ok=True)
+    sheets_dir = output_dir / "sheets"
+    sheets_dir.mkdir(parents=True, exist_ok=True)
+    booklets_dir = output_dir / "booklets"
+    booklets_dir.mkdir(parents=True, exist_ok=True)
     narrow_pdfs: list[bytes] = []
 
     for page_idx in range(0, 20):
@@ -197,6 +202,7 @@ def generate_book(
         if page_idx <= 8:
             top_hole = 9 - page_idx
             bottom_hole = 9 if page_idx == 0 else 18 - top_hole
+            fname = f"{safe_course}_{top_hole}_{bottom_hole}.pdf"
             top_hd = _get_hole_render_data(
                 top_hole, projected, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode,
@@ -206,44 +212,50 @@ def generate_book(
                 slot1_mode, slot2_mode,
             )
             if top_hd:
-                svg_str = compose_page(
+                top_svg = render_hole_page(
                     hole_svg=top_hd["hole_svg"], hole_num=top_hole, par=top_hd["par"],
                     tee_yardages=top_hd["tee_yardages"],
-                    slot1_content=slot1_mode, slot2_content=slot2_mode,
-                    slot1_svg=top_hd["slot1_svg"], slot2_svg=top_hd["slot2_svg"],
-                    stats_data=stats_data,
-                    bottom_hole_num=bottom_hole if bottom_hd else None,
-                    bottom_slot1_svg=bottom_hd["slot1_svg"] if bottom_hd else "",
-                    bottom_slot2_svg=bottom_hd["slot2_svg"] if bottom_hd else "",
                 )
+                bottom_svg = render_bottom_slots(
+                    slot1_content=slot1_mode, slot2_content=slot2_mode,
+                    slot1_svg=bottom_hd["slot1_svg"] if bottom_hd else "",
+                    slot2_svg=bottom_hd["slot2_svg"] if bottom_hd else "",
+                    stats_data=stats_data,
+                    hole_num=bottom_hole if bottom_hd else top_hole,
+                )
+                svg_str = compose_sheet(top_svg, bottom_svg)
             else:
                 import svgwrite as svg
-                dwg = svg.Drawing(size=("306pt", "1008pt"), viewBox="0 0 306 1008")
-                dwg.add(dwg.rect(insert=(0, 0), size=(306, 1008), fill="white"))
-                svg_str = dwg.tostring()
+                dwg = svg.Drawing(size=(f"{PAGE_W}pt", f"{PAGE_CONTENT_H}pt"), viewBox=f"0 0 {PAGE_W} {PAGE_CONTENT_H}")
+                dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, PAGE_CONTENT_H), fill="white"))
+                blank = dwg.tostring()
+                svg_str = compose_sheet(blank, blank)
 
         elif page_idx == 9:
+            fname = f"{safe_course}_chart_18.pdf"
             chart_svg = compose_chart_page()
             hd = _get_hole_render_data(
                 18, projected, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode,
             )
             if hd:
-                bottom_svg = compose_hole_bottom_page(
-                    hole_num=18, slot1_content=slot1_mode, slot2_content=slot2_mode,
+                bottom_svg = render_bottom_slots(
+                    slot1_content=slot1_mode, slot2_content=slot2_mode,
                     slot1_svg=hd["slot1_svg"], slot2_svg=hd["slot2_svg"],
                     stats_data=stats_data,
+                    hole_num=18,
                 )
             else:
                 import svgwrite as svg
-                dwg = svg.Drawing(size=("306pt", "504pt"), viewBox="0 0 306 504")
-                dwg.add(dwg.rect(insert=(0, 0), size=(306, 504), fill="white"))
+                dwg = svg.Drawing(size=("306pt", f"{PAGE_CONTENT_H}pt"), viewBox=f"0 0 306 {PAGE_CONTENT_H}")
+                dwg.add(dwg.rect(insert=(0, 0), size=(306, PAGE_CONTENT_H), fill="white"))
                 bottom_svg = dwg.tostring()
-            svg_str = compose_stacked_page(chart_svg, bottom_svg)
+            svg_str = compose_sheet(chart_svg, bottom_svg)
 
         elif page_idx <= 17:
             top_hole = page_idx
             bottom_hole = 18 - top_hole
+            fname = f"{safe_course}_{top_hole}_{bottom_hole}.pdf"
             top_hd = _get_hole_render_data(
                 top_hole, projected, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode,
@@ -253,53 +265,65 @@ def generate_book(
                 slot1_mode, slot2_mode,
             )
             if top_hd:
-                svg_str = compose_page(
+                top_svg = render_hole_page(
                     hole_svg=top_hd["hole_svg"], hole_num=top_hole, par=top_hd["par"],
                     tee_yardages=top_hd["tee_yardages"],
-                    slot1_content=slot1_mode, slot2_content=slot2_mode,
-                    slot1_svg=top_hd["slot1_svg"], slot2_svg=top_hd["slot2_svg"],
-                    stats_data=stats_data,
-                    bottom_hole_num=bottom_hole if bottom_hd else None,
-                    bottom_slot1_svg=bottom_hd["slot1_svg"] if bottom_hd else "",
-                    bottom_slot2_svg=bottom_hd["slot2_svg"] if bottom_hd else "",
                 )
+                bottom_svg = render_bottom_slots(
+                    slot1_content=slot1_mode, slot2_content=slot2_mode,
+                    slot1_svg=bottom_hd["slot1_svg"] if bottom_hd else "",
+                    slot2_svg=bottom_hd["slot2_svg"] if bottom_hd else "",
+                    stats_data=stats_data,
+                    hole_num=bottom_hole if bottom_hd else top_hole,
+                )
+                svg_str = compose_sheet(top_svg, bottom_svg)
             else:
                 import svgwrite as svg
-                dwg = svg.Drawing(size=("306pt", "1008pt"), viewBox="0 0 306 1008")
-                dwg.add(dwg.rect(insert=(0, 0), size=(306, 1008), fill="white"))
-                svg_str = dwg.tostring()
+                dwg = svg.Drawing(size=(f"{PAGE_W}pt", f"{PAGE_CONTENT_H}pt"), viewBox=f"0 0 {PAGE_W} {PAGE_CONTENT_H}")
+                dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, PAGE_CONTENT_H), fill="white"))
+                blank = dwg.tostring()
+                svg_str = compose_sheet(blank, blank)
 
         elif page_idx == 18:
+            fname = f"{safe_course}_18_notes.pdf"
             hd = _get_hole_render_data(
                 18, projected, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode,
             )
             if hd:
-                top_svg = compose_hole_top_page(
+                top_svg = render_hole_page(
                     hole_svg=hd["hole_svg"], hole_num=18, par=hd["par"],
                     tee_yardages=hd["tee_yardages"],
                 )
             else:
                 import svgwrite as svg
-                dwg = svg.Drawing(size=("306pt", "504pt"), viewBox="0 0 306 504")
-                dwg.add(dwg.rect(insert=(0, 0), size=(306, 504), fill="white"))
+                dwg = svg.Drawing(size=("306pt", f"{PAGE_CONTENT_H}pt"), viewBox=f"0 0 306 {PAGE_CONTENT_H}")
+                dwg.add(dwg.rect(insert=(0, 0), size=(306, PAGE_CONTENT_H), fill="white"))
                 top_svg = dwg.tostring()
             notes_svg = compose_notes_page()
-            svg_str = compose_stacked_page(top_svg, notes_svg)
+            svg_str = compose_sheet(top_svg, notes_svg)
 
         elif page_idx == 19:
-            back_svg = compose_back_page()
+            fname = f"{safe_course}_cover.pdf"
+            overview_svg = render_course_overview(
+                projected,
+                PRINTABLE_W,
+                PAGE_CONTENT_H - 4 * MARGIN - 24,
+                padding=10.0,
+            )
+            back_svg = compose_back_page(full_course_svg=overview_svg)
+            back_svg = flip_page_svg(back_svg, PAGE_W, PAGE_CONTENT_H)
             front_svg = compose_front_page(
                 course_name=course_name,
                 location=course_ps.get("location"),
                 total_par=total_par,
                 tee_totals=tee_totals,
             )
-            svg_str = compose_stacked_page(back_svg, front_svg)
+            svg_str = compose_sheet(back_svg, front_svg)
 
         pdf_bytes = _svg_to_pdf_bytes(svg_str)
         narrow_pdfs.append(pdf_bytes)
-        narrow_path = output_dir / f"yardage_book_{page_idx:02d}.pdf"
+        narrow_path = sheets_dir / fname
         narrow_path.write_bytes(pdf_bytes)
 
     # Combine into 5 saddle-stitch booklets, each with two 8.5"x14" pages
@@ -322,7 +346,7 @@ def generate_book(
             page.merge_transformed_page(left_pdf, Transformation().translate(0, 0))
             page.merge_transformed_page(right_pdf, Transformation().translate(PAGE_W, 0))
 
-        booklet_path = output_dir / f"yardage_book_booklet_{booklet_idx:02d}.pdf"
+        booklet_path = booklets_dir / f"{safe_course}_booklet_{booklet_idx:02d}.pdf"
         with open(booklet_path, "wb") as f:
             writer.write(f)
 

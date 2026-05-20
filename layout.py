@@ -22,6 +22,7 @@ HALF_PAGE_PRINTABLE_H = HALF_PAGE_H - 2 * MARGIN  # 468pt
 
 TOP_HALF_H = 486.0   # 6.75 * 72
 BOTTOM_HALF_H = 486.0
+PAGE_CONTENT_H = PAGE_H / 2 - MARGIN  # 486pt — single page content height within a sheet
 SLOT_H = 243.0       # half of bottom half
 
 # Hole number circle (adjustable)
@@ -33,59 +34,146 @@ TEE_COLOUR_MAP = {
     "gold": "#F9A825", "black": "#212121", "green": "#2E7D32",
 }
 
+_CORNER_ARM = 8.0  # length of each chevron arm in points
 
-def compose_page(
-    hole_svg: str,
-    hole_num: int,
-    par: int,
-    tee_yardages: dict,
-    slot1_content: str,  # "green_grid", "stats_panel", or "notes"
-    slot2_content: str,
-    slot1_svg: str = "",  # pre-rendered SVG for slot 1 (if applicable)
-    slot2_svg: str = "",  # pre-rendered SVG for slot 2 (if applicable)
-    stats_data: dict | None = None,  # {hole_num: {stat_name: value}}
-    bottom_hole_num: int | None = None,  # hole number for bottom-zone stats (cross-pairing)
-    bottom_slot1_svg: str = "",  # pre-rendered SVG for bottom slot 1 (cross-pairing)
-    bottom_slot2_svg: str = "",  # pre-rendered SVG for bottom slot 2 (cross-pairing)
-) -> str:
+
+def _text_width(text: str, font_size: int) -> float:
+    """Estimate rendered width of text in points for JetBrainsMono at font_size."""
+    return len(text) * font_size * 0.65
+
+
+def _wrap_text(text: str, font_size: int, max_width: float) -> list[str]:
+    """Split text into lines that each fit within max_width at the given font size.
+
+    Uses a conservative character-width estimate (0.65 × font_size for
+    JetBrainsMono) rather than font-file measurement, to match SVG rendering.
+    """
+    char_w = font_size * 0.65
+    words = text.split()
+    lines: list[str] = []
+    current: list[str] = []
+    for word in words:
+        test = " ".join(current + [word])
+        if len(test) * char_w <= max_width:
+            current.append(word)
+        else:
+            if current:
+                lines.append(" ".join(current))
+            current = [word]
+    if current:
+        lines.append(" ".join(current))
+    return lines if lines else [text]
+
+
+def _draw_corner_marks(
+    dwg: svgwrite.Drawing,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    arm: float | None = None,
+) -> None:
+    """Draw L-shaped corner marks at the four corners of a rectangle."""
+    if arm is None:
+        arm = _CORNER_ARM
+    s = {"stroke": "#000000", "stroke_width": 0.5, "stroke_linecap": "square"}
+    # top-left
+    dwg.add(dwg.line(start=(x, y), end=(x + arm, y), **s))
+    dwg.add(dwg.line(start=(x, y), end=(x, y + arm), **s))
+    # top-right
+    dwg.add(dwg.line(start=(x + w, y), end=(x + w - arm, y), **s))
+    dwg.add(dwg.line(start=(x + w, y), end=(x + w, y + arm), **s))
+    # bottom-left
+    dwg.add(dwg.line(start=(x, y + h), end=(x + arm, y + h), **s))
+    dwg.add(dwg.line(start=(x, y + h), end=(x, y + h - arm), **s))
+    # bottom-right
+    dwg.add(dwg.line(start=(x + w, y + h), end=(x + w - arm, y + h), **s))
+    dwg.add(dwg.line(start=(x + w, y + h), end=(x + w, y + h - arm), **s))
+
+
+def flip_page_svg(svg_str: str, w: float, h: float) -> str:
+    """Return a new SVG that displays svg_str rotated 180° around its centre."""
+    dwg = svgwrite.Drawing(size=(f"{w}pt", f"{h}pt"), viewBox=f"0 0 {w} {h}")
+    g = dwg.g(transform=f"rotate(180, {w / 2}, {h / 2})")
+    g.add(dwg.image(
+        href="data:image/svg+xml," + svg_str.replace("#", "%23"),
+        insert=(0, 0),
+        size=(w, h),
+    ))
+    dwg.add(g)
+    return dwg.tostring()
+
+
+def compose_sheet(top_svg: str, bottom_svg: str) -> str:
+    """Combine two PAGE_CONTENT_H SVGs into one PAGE_H sheet with corner marks."""
     dwg = svgwrite.Drawing(
         size=(f"{PAGE_W}pt", f"{PAGE_H}pt"),
         viewBox=f"0 0 {PAGE_W} {PAGE_H}",
     )
 
-    # White background
     dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, PAGE_H), fill="white"))
 
-    # --- Top half: hole diagram with overlays ---
-    # Embed hole SVG
     dwg.add(dwg.image(
-        href="data:image/svg+xml," + hole_svg.replace("#", "%23"),
-        insert=(MARGIN, MARGIN),
-        size=(PRINTABLE_W, TOP_HALF_H),
+        href="data:image/svg+xml," + top_svg.replace("#", "%23"),
+        insert=(0, MARGIN),
+        size=(PAGE_W, PAGE_CONTENT_H),
     ))
 
-    # Overlay: hole number + par (upper-right)
-    # Position: 0.125" inset from printable area edges (0.375" from page edge)
-    inset = 9.0  # 0.125 * 72
-    circle_cx = PAGE_W - MARGIN - inset
-    circle_cy = MARGIN + inset
-    
-    # White box behind hole number + par pair
-    box_x = circle_cx - HOLE_NUMBER_CIRCLE_RADIUS - 6
-    box_y = circle_cy - HOLE_NUMBER_CIRCLE_RADIUS - 4
-    box_w = HOLE_NUMBER_CIRCLE_RADIUS * 2 + 12
-    box_h = HOLE_NUMBER_CIRCLE_RADIUS * 2 + 14 + 14 + 6
+    dwg.add(dwg.image(
+        href="data:image/svg+xml," + bottom_svg.replace("#", "%23"),
+        insert=(0, PAGE_H / 2),
+        size=(PAGE_W, PAGE_CONTENT_H),
+    ))
+
+    _draw_corner_marks(dwg, MARGIN, MARGIN, PRINTABLE_W, PAGE_CONTENT_H)
+    _draw_corner_marks(dwg, MARGIN, PAGE_H / 2, PRINTABLE_W, PAGE_CONTENT_H)
+
+    return dwg.tostring()
+
+
+def render_hole_page(
+    hole_svg: str,
+    hole_num: int,
+    par: int,
+    tee_yardages: dict,
+) -> str:
+    """Content-only PAGE_CONTENT_H SVG: hole layout with overlays."""
+    dwg = svgwrite.Drawing(
+        size=(f"{PAGE_W}pt", f"{PAGE_CONTENT_H}pt"),
+        viewBox=f"0 0 {PAGE_W} {PAGE_CONTENT_H}",
+    )
+
+    dwg.add(dwg.image(
+        href="data:image/svg+xml," + hole_svg.replace("#", "%23"),
+        insert=(MARGIN, 0),
+        size=(PRINTABLE_W, PAGE_CONTENT_H),
+    ))
+
+    # --- Block 1: Hole number / Par (top-right corner) ---
+    # Content dimensions
+    par_label = f"Par {par}"
+    hn_content_w = max(2 * HOLE_NUMBER_CIRCLE_RADIUS, _text_width(par_label, 9))
+    hn_content_h = 2 * HOLE_NUMBER_CIRCLE_RADIUS + 6 + 9  # circle + gap + par ascender
+
+    # Rect: anchored to printable top-right corner
+    hn_rect_w = hn_content_w + 2 * MARGIN
+    hn_rect_h = hn_content_h + 2 * MARGIN
+    hn_rect_x = PAGE_W - MARGIN - hn_rect_w
+    hn_rect_y = MARGIN
+
     dwg.add(dwg.rect(
-        insert=(box_x, box_y),
-        size=(box_w, box_h),
+        insert=(hn_rect_x, hn_rect_y),
+        size=(hn_rect_w, hn_rect_h),
         fill="white",
         stroke="none",
         rx=4, ry=4,
     ))
-    
-    # Circle with hole number inside
+
+    # Circle: centred horizontally, MARGIN from rect top
+    hn_cx = hn_rect_x + hn_rect_w / 2
+    hn_cy = hn_rect_y + MARGIN + HOLE_NUMBER_CIRCLE_RADIUS
     dwg.add(dwg.circle(
-        center=(circle_cx, circle_cy),
+        center=(hn_cx, hn_cy),
         r=HOLE_NUMBER_CIRCLE_RADIUS,
         fill="white",
         stroke="#000000",
@@ -93,70 +181,88 @@ def compose_page(
     ))
     dwg.add(dwg.text(
         str(hole_num),
-        insert=(circle_cx, circle_cy),
-        font_size="16pt",
+        insert=(hn_cx, hn_cy),
+        font_size="14pt",
         font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
         fill="#212121",
         text_anchor="middle",
         dominant_baseline="central",
-        font_weight="bold",
     ))
-    
-    # Par number centered below circle
-    par_y = circle_cy + HOLE_NUMBER_CIRCLE_RADIUS + 14  # 14pt below circle edge
+
+    # Par text: 6pt gap below circle bottom, 9pt ascender
+    par_y = hn_cy + HOLE_NUMBER_CIRCLE_RADIUS + 6 + 9
     dwg.add(dwg.text(
-        f"Par {par}",
-        insert=(circle_cx, par_y),
+        par_label,
+        insert=(hn_cx, par_y),
         font_size="9pt",
         font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
         fill="#212121",
         text_anchor="middle",
     ))
 
-    # Overlay: tee yardages (bottom-right, sorted shortest to longest)
     sorted_tees = sorted(
         [(name, tee_yardages[name]) for name in TEE_DISPLAY_ORDER if name in tee_yardages],
         key=lambda x: x[1]
     )
 
-    bg_width = 80
-    total_tee_h = len(sorted_tees) * 13
-    y_tee_start = MARGIN + TOP_HALF_H - 15 - total_tee_h
-    dwg.add(dwg.rect(
-        insert=(PAGE_W - MARGIN - 10 - bg_width, y_tee_start - 9),
-        size=(bg_width, total_tee_h + 2),
-        fill="white",
-        stroke="none",
-    ))
-    y_tee = y_tee_start
-    for tee_name, yardage in sorted_tees:
-        col = TEE_COLOUR_MAP.get(tee_name, "#333")
-        dwg.add(dwg.text(
-            f"{tee_name.upper()} : {yardage}",
-            insert=(PAGE_W - MARGIN - 10, y_tee),
-            font_size="9pt",
-            font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-            fill=col,
-            text_anchor="end",
+    if sorted_tees:
+        # Compute text group bounding box
+        line_h = 16.0
+        n = len(sorted_tees)
+        line_texts = [f"{n.upper()} : {y}" for n, y in sorted_tees]
+        text_w = max(_text_width(t, 12) for t in line_texts)
+        text_h = (n - 1) * line_h + 15  # ascender of first line to descender of last
+
+        # Rectangle: text bbox + MARGIN padding on each side
+        bg_w = text_w + 2 * MARGIN
+        bg_h = text_h + 2 * MARGIN
+        bg_right = PAGE_W - MARGIN  # flush with printable right
+        bg_bottom = PAGE_CONTENT_H   # flush with printable bottom
+
+        dwg.add(dwg.rect(
+            insert=(bg_right - bg_w, bg_bottom - bg_h),
+            size=(bg_w, bg_h),
+            fill="white",
+            stroke="none",
+            rx=4, ry=4,
         ))
-        y_tee += 13.0
 
-    # --- Bottom half: two slots ---
-    slot1_y = MARGIN + TOP_HALF_H
-    slot2_y = slot1_y + SLOT_H
+        yd_text_right = bg_right - MARGIN
+        y_tee = bg_bottom - MARGIN - 3 - (n - 1) * line_h  # last-line descender + line steps up
+        for tee_name, yardage in sorted_tees:
+            dwg.add(dwg.text(
+                f"{tee_name.upper()} : {yardage}",
+                insert=(yd_text_right, y_tee),
+                font_size="12pt",
+                font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
+                fill="#000000",
+                text_anchor="end",
+            ))
+            y_tee += line_h
 
-    # Use cross-paired hole number for bottom-zone stats when provided
-    slot_hole_num = bottom_hole_num if bottom_hole_num is not None else hole_num
-    s1 = bottom_slot1_svg if bottom_slot1_svg else slot1_svg
-    s2 = bottom_slot2_svg if bottom_slot2_svg else slot2_svg
+    return dwg.tostring()
 
-    # Render slot 1
-    _render_slot(dwg, slot1_content, s1, stats_data, slot_hole_num,
-                 MARGIN, slot1_y, PRINTABLE_W, SLOT_H)
 
-    # Render slot 2
-    _render_slot(dwg, slot2_content, s2, stats_data, slot_hole_num,
-                 MARGIN, slot2_y, PRINTABLE_W, SLOT_H)
+def render_bottom_slots(
+    slot1_content: str,
+    slot2_content: str,
+    slot1_svg: str = "",
+    slot2_svg: str = "",
+    stats_data: dict | None = None,
+    hole_num: int = 1,
+) -> str:
+    """Content-only PAGE_CONTENT_H SVG: two stacked slots with no gap."""
+    dwg = svgwrite.Drawing(
+        size=(f"{PAGE_W}pt", f"{PAGE_CONTENT_H}pt"),
+        viewBox=f"0 0 {PAGE_W} {PAGE_CONTENT_H}",
+    )
+
+    slot_h = PAGE_CONTENT_H / 2
+
+    _render_slot(dwg, slot1_content, slot1_svg, stats_data, hole_num,
+                 MARGIN, 0, PRINTABLE_W, slot_h)
+    _render_slot(dwg, slot2_content, slot2_svg, stats_data, hole_num,
+                 MARGIN, slot_h, PRINTABLE_W, slot_h)
 
     return dwg.tostring()
 
@@ -243,13 +349,12 @@ def _render_slot(
 
     elif content_type == "notes":
         # Ruled lines
-        line_spacing = 18.0
-        margin_x = 12.0
+        line_spacing = 24.0
         line_y = y + line_spacing
         while line_y < y + height - 6:
             dwg.add(dwg.line(
-                start=(x + margin_x, line_y),
-                end=(x + width - margin_x, line_y),
+                start=(x, line_y),
+                end=(x + width, line_y),
                 stroke="#ddd",
                 stroke_width=0.5,
             ))
@@ -262,42 +367,107 @@ def compose_front_page(
     total_par: int = 0,
     tee_totals: dict[str, int] | None = None,
 ) -> str:
-    dwg = svgwrite.Drawing(
-        size=(f"{PAGE_W}pt", f"{HALF_PAGE_H}pt"),
-        viewBox=f"0 0 {PAGE_W} {HALF_PAGE_H}",
-    )
+    # --- Compute phase ---
+    title_max_w = PRINTABLE_W - 88
+    title_lines = _wrap_text(course_name, 18, title_max_w)
+    title_line_h = 26.0
 
-    dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, HALF_PAGE_H), fill="white"))
-
-    name_y = HALF_PAGE_H / 3
-    dwg.add(dwg.text(
-        course_name,
-        insert=(PAGE_W / 2, name_y),
-        font_size="24pt",
-        font_weight="bold",
-        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-        fill="#212121",
-        text_anchor="middle",
-    ))
-
-    loc_str = ""
+    loc_str1 = ""
+    loc_str2 = ""
     if location:
         city = location.get("city", "")
         state = location.get("state") or location.get("state/province", "")
         country = location.get("country", "")
-        parts = [p for p in [city, state, country] if p]
-        loc_str = ", ".join(parts)
-    if loc_str:
+        line1_parts = [p for p in [city, state] if p]
+        if line1_parts:
+            loc_str1 = ", ".join(line1_parts)
+        if country:
+            loc_str2 = country
+    has_loc = bool(loc_str1 or loc_str2)
+
+    sorted_tees: list[tuple[str, int]] = []
+    if tee_totals:
+        sorted_tees = sorted(
+            [(n, tee_totals[n]) for n in TEE_DISPLAY_ORDER if n in tee_totals],
+            key=lambda x: x[1],
+        )
+
+    # Bounding-box heights (ascender above first baseline + descender below last baseline)
+    _ASC = lambda fs: fs       # ascender: font_size above baseline
+    _DSC = lambda fs: fs * 0.25  # descender: 0.25 × font_size below baseline
+    title_h = _ASC(18) + (len(title_lines) - 1) * title_line_h + _DSC(18)
+    if has_loc:
+        if loc_str2:
+            loc_h = _ASC(11) + 16 + _DSC(10)  # two lines: asc1 + offset + desc2
+        else:
+            loc_h = _ASC(11) + _DSC(11)       # one line
+    else:
+        loc_h = 0
+    par_h = _ASC(14) + _DSC(14)
+    n_tees = len(sorted_tees)
+    tee_h = (_ASC(11) + (n_tees - 1) * 18 + _DSC(11)) if n_tees else 0
+
+    # Fixed gap between sections, block centred vertically
+    gap = 36.0
+    total_block_h = title_h + loc_h + par_h + tee_h + 3 * gap
+    title_top = (PAGE_CONTENT_H - total_block_h) / 2
+    loc_top = title_top + title_h + gap
+    par_top = loc_top + loc_h + gap
+    tee_top = par_top + par_h + gap
+
+    # Text baselines from bbox tops
+    name_y = title_top + _ASC(18)
+    title_bottom = name_y + (len(title_lines) - 1) * title_line_h
+
+    loc_offset = loc_top + _ASC(11)
+    if loc_str2:
+        loc2_y = loc_offset + 16 if loc_str1 else loc_offset
+        loc_bottom = loc2_y + _DSC(10)
+    elif loc_str1:
+        loc_bottom = loc_offset + _DSC(11)
+    else:
+        loc_bottom = title_bottom + _DSC(18)
+
+    par_y = par_top + _ASC(14)
+
+    table_y = tee_top + _ASC(11) if n_tees else par_y
+
+    # --- Draw phase ---
+    dwg = svgwrite.Drawing(
+        size=(f"{PAGE_W}pt", f"{PAGE_CONTENT_H}pt"),
+        viewBox=f"0 0 {PAGE_W} {PAGE_CONTENT_H}",
+    )
+
+    for i, line in enumerate(title_lines):
         dwg.add(dwg.text(
-            loc_str,
-            insert=(PAGE_W / 2, name_y + 36),
+            line,
+            insert=(PAGE_W / 2, name_y + i * title_line_h),
+            font_size="18pt",
+            font_weight="bold",
+            font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
+            fill="#212121",
+            text_anchor="middle",
+        ))
+
+    if loc_str1:
+        dwg.add(dwg.text(
+            loc_str1,
+            insert=(PAGE_W / 2, loc_offset),
             font_size="11pt",
             font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
             fill="#555",
             text_anchor="middle",
         ))
+    if loc_str2:
+        dwg.add(dwg.text(
+            loc_str2,
+            insert=(PAGE_W / 2, loc2_y),
+            font_size="10pt",
+            font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
+            fill="#555",
+            text_anchor="middle",
+        ))
 
-    par_y = name_y + (36 if loc_str else 0) + 30
     dwg.add(dwg.text(
         f"Par {total_par}",
         insert=(PAGE_W / 2, par_y),
@@ -307,29 +477,42 @@ def compose_front_page(
         text_anchor="middle",
     ))
 
-    if tee_totals:
-        sorted_tees = sorted(
-            [(n, tee_totals[n]) for n in TEE_DISPLAY_ORDER if n in tee_totals],
-            key=lambda x: x[1],
-        )
-        table_y = par_y + 40
+    if sorted_tees:
+        col_gap = 4.0
+        name_w = max(_text_width(f"{n.upper()} :", 11) for n, _ in sorted_tees)
+        yardage_w = max(_text_width(str(y), 11) for _, y in sorted_tees)
+        total_w = name_w + col_gap + yardage_w
+        block_left = (PAGE_W - total_w) / 2
+        col_x = block_left + name_w
+        y = table_y
         for tee_name, yardage in sorted_tees:
-            col = TEE_COLOUR_MAP.get(tee_name, "#333")
-            dwg.add(dwg.rect(
-                insert=(PAGE_W / 2 - 60, table_y - 7),
-                size=(8, 8),
-                fill=col,
-                stroke="none",
-            ))
             dwg.add(dwg.text(
-                f"{tee_name.upper()} : {yardage}",
-                insert=(PAGE_W / 2, table_y),
+                f"{tee_name.upper()} :",
+                insert=(col_x, y),
                 font_size="11pt",
                 font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
                 fill="#212121",
-                text_anchor="middle",
+                text_anchor="end",
             ))
-            table_y += 18
+            dwg.add(dwg.text(
+                str(yardage),
+                insert=(col_x + col_gap, y),
+                font_size="11pt",
+                font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
+                fill="#212121",
+                text_anchor="start",
+            ))
+            y += 18
+
+    # 3 dots at gap midpoints
+    dot_cx = PAGE_W / 2
+    dots = [
+        (title_top + title_h + gap / 2),
+        (loc_top + loc_h + gap / 2),
+        (par_top + par_h + gap / 2),
+    ]
+    for dot_y in dots:
+        dwg.add(dwg.circle(center=(dot_cx, dot_y), r=1.5, fill="#999"))
 
     return dwg.tostring()
 
@@ -338,22 +521,21 @@ def compose_back_page(
     full_course_svg: str | None = None,
 ) -> str:
     dwg = svgwrite.Drawing(
-        size=(f"{PAGE_W}pt", f"{HALF_PAGE_H}pt"),
-        viewBox=f"0 0 {PAGE_W} {HALF_PAGE_H}",
+        size=(f"{PAGE_W}pt", f"{PAGE_CONTENT_H}pt"),
+        viewBox=f"0 0 {PAGE_W} {PAGE_CONTENT_H}",
     )
 
-    dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, HALF_PAGE_H), fill="white"))
-
     if full_course_svg:
+        overview_h = PAGE_CONTENT_H - 4 * MARGIN - 24
         dwg.add(dwg.image(
             href="data:image/svg+xml," + full_course_svg.replace("#", "%23"),
             insert=(MARGIN, MARGIN),
-            size=(PRINTABLE_W, HALF_PAGE_H - 3 * MARGIN),
+            size=(PRINTABLE_W, overview_h),
         ))
 
     dwg.add(dwg.text(
         "PinSheet",
-        insert=(PAGE_W / 2, HALF_PAGE_H - MARGIN - 20),
+        insert=(PAGE_W / 2, PAGE_CONTENT_H - MARGIN - 20),
         font_size="18pt",
         font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
         fill="#212121",
@@ -367,15 +549,13 @@ def compose_chart_page(
     title: str = "Club Distances",
 ) -> str:
     dwg = svgwrite.Drawing(
-        size=(f"{PAGE_W}pt", f"{HALF_PAGE_H}pt"),
-        viewBox=f"0 0 {PAGE_W} {HALF_PAGE_H}",
+        size=(f"{PAGE_W}pt", f"{PAGE_CONTENT_H}pt"),
+        viewBox=f"0 0 {PAGE_W} {PAGE_CONTENT_H}",
     )
-
-    dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, HALF_PAGE_H), fill="white"))
 
     dwg.add(dwg.text(
         title,
-        insert=(PAGE_W / 2, MARGIN + 35),
+        insert=(PAGE_W / 2, 35),
         font_size="14pt",
         font_weight="bold",
         font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
@@ -386,8 +566,8 @@ def compose_chart_page(
     cols = 4
     rows = 15
     headers = ["Club", "Carry", "Total", "Notes"]
-    grid_top = MARGIN + 55
-    grid_bottom = HALF_PAGE_H - MARGIN
+    grid_top = 55
+    grid_bottom = PAGE_CONTENT_H
     grid_left = MARGIN
     grid_right = PAGE_W - MARGIN
     gw = grid_right - grid_left
@@ -421,19 +601,16 @@ def compose_chart_page(
 
 def compose_notes_page() -> str:
     dwg = svgwrite.Drawing(
-        size=(f"{PAGE_W}pt", f"{HALF_PAGE_H}pt"),
-        viewBox=f"0 0 {PAGE_W} {HALF_PAGE_H}",
+        size=(f"{PAGE_W}pt", f"{PAGE_CONTENT_H}pt"),
+        viewBox=f"0 0 {PAGE_W} {PAGE_CONTENT_H}",
     )
 
-    dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, HALF_PAGE_H), fill="white"))
-
-    line_spacing = 18.0
-    margin_x = 12.0
-    line_y = MARGIN + margin_x
-    while line_y < HALF_PAGE_H - MARGIN - 6:
+    line_spacing = 24.0
+    line_y = 0
+    while line_y < PAGE_CONTENT_H - 6:
         dwg.add(dwg.line(
-            start=(MARGIN + margin_x, line_y),
-            end=(PAGE_W - MARGIN - margin_x, line_y),
+            start=(MARGIN, line_y),
+            end=(PAGE_W - MARGIN, line_y),
             stroke="#ddd",
             stroke_width=0.5,
         ))
@@ -442,148 +619,4 @@ def compose_notes_page() -> str:
     return dwg.tostring()
 
 
-def compose_stacked_page(top_svg: str, bottom_svg: str) -> str:
-    """Stack two 7" SVG pages into one 14" page."""
-    dwg = svgwrite.Drawing(
-        size=(f"{PAGE_W}pt", f"{PAGE_H}pt"),
-        viewBox=f"0 0 {PAGE_W} {PAGE_H}",
-    )
 
-    dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, PAGE_H), fill="white"))
-
-    dwg.add(dwg.image(
-        href="data:image/svg+xml," + top_svg.replace("#", "%23"),
-        insert=(0, 0),
-        size=(PAGE_W, HALF_PAGE_H),
-    ))
-
-    dwg.add(dwg.image(
-        href="data:image/svg+xml," + bottom_svg.replace("#", "%23"),
-        insert=(0, HALF_PAGE_H),
-        size=(PAGE_W, HALF_PAGE_H),
-    ))
-
-    return dwg.tostring()
-
-
-def compose_hole_top_page(
-    hole_svg: str,
-    hole_num: int,
-    par: int,
-    tee_yardages: dict,
-) -> str:
-    """7" SVG: hole diagram with hole number, par, and tee yardages."""
-    dwg = svgwrite.Drawing(
-        size=(f"{PAGE_W}pt", f"{HALF_PAGE_H}pt"),
-        viewBox=f"0 0 {PAGE_W} {HALF_PAGE_H}",
-    )
-
-    dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, HALF_PAGE_H), fill="white"))
-
-    dwg.add(dwg.image(
-        href="data:image/svg+xml," + hole_svg.replace("#", "%23"),
-        insert=(MARGIN, MARGIN),
-        size=(PRINTABLE_W, HALF_PAGE_H - 2 * MARGIN),
-    ))
-
-    inset = 9.0
-    circle_cx = PAGE_W - MARGIN - inset
-    circle_cy = MARGIN + inset
-
-    # White box behind hole number + par pair
-    box_x = circle_cx - HOLE_NUMBER_CIRCLE_RADIUS - 6
-    box_y = circle_cy - HOLE_NUMBER_CIRCLE_RADIUS - 4
-    box_w = HOLE_NUMBER_CIRCLE_RADIUS * 2 + 12
-    box_h = HOLE_NUMBER_CIRCLE_RADIUS * 2 + 14 + 14 + 6
-    dwg.add(dwg.rect(
-        insert=(box_x, box_y),
-        size=(box_w, box_h),
-        fill="white",
-        stroke="none",
-        rx=4, ry=4,
-    ))
-
-    dwg.add(dwg.circle(
-        center=(circle_cx, circle_cy),
-        r=HOLE_NUMBER_CIRCLE_RADIUS,
-        fill="white",
-        stroke="#000000",
-        stroke_width=1.0,
-    ))
-    dwg.add(dwg.text(
-        str(hole_num),
-        insert=(circle_cx, circle_cy),
-        font_size="16pt",
-        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-        fill="#212121",
-        text_anchor="middle",
-        dominant_baseline="central",
-        font_weight="bold",
-    ))
-
-    par_y = circle_cy + HOLE_NUMBER_CIRCLE_RADIUS + 14
-    dwg.add(dwg.text(
-        f"Par {par}",
-        insert=(circle_cx, par_y),
-        font_size="9pt",
-        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-        fill="#212121",
-        text_anchor="middle",
-    ))
-
-    sorted_tees = sorted(
-        [(name, tee_yardages[name]) for name in TEE_DISPLAY_ORDER if name in tee_yardages],
-        key=lambda x: x[1]
-    )
-
-    bg_width = 80
-    total_tee_h = len(sorted_tees) * 13
-    y_tee_start = MARGIN + HALF_PAGE_H - 2 * MARGIN - 15 - total_tee_h
-    dwg.add(dwg.rect(
-        insert=(PAGE_W - MARGIN - 10 - bg_width, y_tee_start - 9),
-        size=(bg_width, total_tee_h + 2),
-        fill="white",
-        stroke="none",
-    ))
-    y_tee = y_tee_start
-    for tee_name, yardage in sorted_tees:
-        col = TEE_COLOUR_MAP.get(tee_name, "#333")
-        dwg.add(dwg.text(
-            f"{tee_name.upper()} : {yardage}",
-            insert=(PAGE_W - MARGIN - 10, y_tee),
-            font_size="9pt",
-            font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-            fill=col,
-            text_anchor="end",
-        ))
-        y_tee += 13.0
-
-    return dwg.tostring()
-
-
-def compose_hole_bottom_page(
-    hole_num: int,
-    slot1_content: str,
-    slot2_content: str,
-    slot1_svg: str = "",
-    slot2_svg: str = "",
-    stats_data: dict | None = None,
-) -> str:
-    """7" SVG: slot content for a single hole."""
-    dwg = svgwrite.Drawing(
-        size=(f"{PAGE_W}pt", f"{HALF_PAGE_H}pt"),
-        viewBox=f"0 0 {PAGE_W} {HALF_PAGE_H}",
-    )
-
-    dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, HALF_PAGE_H), fill="white"))
-
-    slot_height = (HALF_PAGE_H - 2 * MARGIN) / 2
-    slot1_y = MARGIN
-    slot2_y = MARGIN + slot_height
-
-    _render_slot(dwg, slot1_content, slot1_svg, stats_data, hole_num,
-                 MARGIN, slot1_y, PRINTABLE_W, slot_height)
-    _render_slot(dwg, slot2_content, slot2_svg, stats_data, hole_num,
-                 MARGIN, slot2_y, PRINTABLE_W, slot_height)
-
-    return dwg.tostring()
