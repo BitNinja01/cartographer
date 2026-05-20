@@ -174,18 +174,12 @@ def get_green_centroid(hole_geom: dict) -> tuple[float, float]:
     return c.x, c.y
 
 
-def fit_hole(
-    hole_geom: dict,
-    canvas_width: float,
-    canvas_height: float,
-    padding: float = 20.0,
-) -> tuple[dict, float, float, float]:
-    """Rotate hole so green faces top, then scale and centre within canvas bounds.
+def get_green_rotation(hole_geom: dict) -> float:
+    """Return the rotation angle (degrees) needed to orient green to top of canvas.
 
-    Returns (transformed_hole_geom, offset_x, offset_y, scale_factor).
-    The returned geom has coordinates ready for SVG rendering.
-    scale_factor is the ratio applied to project_course coordinates to fit
-    the canvas — needed by callers that compute distances in canvas space.
+    Uses the full hole geometry to compute the angle from hole centre
+    to green centroid, returning -90° minus that angle. Returns -90.0
+    when no green rings exist (green at hole centre).
     """
     green_cx, green_cy = get_green_centroid(hole_geom)
     min_x, min_y, max_x, max_y = get_hole_bounds(hole_geom)
@@ -195,8 +189,35 @@ def fit_hole(
     dx = green_cx - hole_cx
     dy = green_cy - hole_cy
     angle_to_green = math.degrees(math.atan2(dy, dx))
-    # We want green at top = -90 degrees in SVG coords
-    rotation_deg = -90.0 - angle_to_green
+    return -90.0 - angle_to_green
+
+
+def fit_hole(
+    hole_geom: dict,
+    canvas_width: float,
+    canvas_height: float,
+    padding: float = 20.0,
+    rotation: float | None = None,
+) -> tuple[dict, float, float, float]:
+    """Rotate hole so green faces top, then scale and centre within canvas bounds.
+
+    If rotation is provided (degrees), use it directly instead of computing
+    from hole geometry — useful when fitting a subset of features (e.g. green
+    only) while preserving the orientation from the full hole.
+
+    Returns (transformed_hole_geom, offset_x, offset_y, scale_factor).
+    The returned geom has coordinates ready for SVG rendering.
+    scale_factor is the ratio applied to project_course coordinates to fit
+    the canvas — needed by callers that compute distances in canvas space.
+    """
+    min_x, min_y, max_x, max_y = get_hole_bounds(hole_geom)
+    hole_cx = (min_x + max_x) / 2
+    hole_cy = (min_y + max_y) / 2
+
+    if rotation is not None:
+        rotation_deg = rotation
+    else:
+        rotation_deg = get_green_rotation(hole_geom)
 
     def rotate_point(px: float, py: float) -> tuple[float, float]:
         rad = math.radians(rotation_deg)

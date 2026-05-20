@@ -7,6 +7,7 @@ Produces a single 4.25" x 14" SVG page containing:
 """
 from __future__ import annotations
 
+import io
 import svgwrite
 
 # Page dimensions in SVG points (72 points per inch)
@@ -36,10 +37,56 @@ TEE_COLOUR_MAP = {
 
 _CORNER_ARM = 8.0  # length of each chevron arm in points
 
+# JetBrainsMonoNL exact metrics (queried from font file via fontTools)
+# Units per em: 1000
+# Advance width: 600 units  →  0.6 × font_size
+# sTypoAscender: 1020 units →  1.02 × font_size
+# sTypoDescender: -300 units → 0.30 × font_size (magnitude)
+_CHAR_WIDTH_RATIO = 0.80    # tuned to cairosvg/Pango rendering — proportional fallback font
+                            # renders wider than monospace metrics (measured: "GREEN : 270" = 99.5pt
+                            # at 12pt for 11 chars → 0.756/char; 0.80 adds safety margin)
+_ASCENDER_RATIO   = 1.02    # sTypoAscender / upm
+_DESCENDER_RATIO  = 0.30    # abs(sTypoDescender) / upm
 
-def _text_width(text: str, font_size: int) -> float:
-    """Estimate rendered width of text in points for JetBrainsMono at font_size."""
-    return len(text) * font_size * 0.65
+
+def _text_width(text: str, font_size: float) -> float:
+    """Exact rendered width of text in points for JetBrainsMonoNL (monospace)."""
+    return len(text) * font_size * _CHAR_WIDTH_RATIO
+
+
+def _text_ascender(font_size: float) -> float:
+    """Distance from baseline to top of capitals, in points."""
+    return font_size * _ASCENDER_RATIO
+
+
+def _text_descender(font_size: float) -> float:
+    """Distance from baseline to bottom of descenders, in points (positive value)."""
+    return font_size * _DESCENDER_RATIO
+
+
+def _measure_text_width(text: str, font_size: float, font_family: str) -> float:
+    """Measure actual rendered width of text in points using cairosvg.
+
+    Renders the text to a PNG and finds the rightmost non-white pixel.
+    Accurate regardless of font fallback or proportional glyph widths.
+    """
+    import cairosvg
+    from PIL import Image
+
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="500pt" height="40pt" viewBox="0 0 500 40">'
+        f'<rect x="0" y="0" width="500" height="40" fill="white"/>'
+        f'<text x="0" y="25" font-size="{font_size}pt" font-family="{font_family}" '
+        f'fill="black" text-anchor="start">{text}</text>'
+        f'</svg>'
+    )
+    png = cairosvg.svg2png(bytestring=svg.encode(), output_width=1000)
+    img = Image.open(io.BytesIO(png)).convert("L")
+    w, h = img.size
+    scale = w / 500
+    row = list(img.getdata())[h // 2 * w: (h // 2 + 1) * w]
+    rightmost = max((i for i, p in enumerate(row) if p < 200), default=0)
+    return rightmost / scale
 
 
 def _wrap_text(text: str, font_size: int, max_width: float) -> list[str]:
@@ -150,28 +197,29 @@ def render_hole_page(
     ))
 
     # --- Block 1: Hole number / Par (top-right corner) ---
-    # Content dimensions
+    pad = MARGIN / 2
     par_label = f"Par {par}"
-    hn_content_w = max(2 * HOLE_NUMBER_CIRCLE_RADIUS, _text_width(par_label, 9))
-    hn_content_h = 2 * HOLE_NUMBER_CIRCLE_RADIUS + 6 + 9  # circle + gap + par ascender
 
-    # Rect: anchored to printable top-right corner
-    hn_rect_w = hn_content_w + 2 * MARGIN
-    hn_rect_h = hn_content_h + 2 * MARGIN
+    # Content bbox — exact font metrics
+    hn_content_w = max(2 * HOLE_NUMBER_CIRCLE_RADIUS, _text_width(par_label, 9))
+    hn_content_h = 2 * HOLE_NUMBER_CIRCLE_RADIUS + 4 + _text_ascender(9) + _text_descender(9)
+
+    # Rect: top-right corner at printable top-right (x=PAGE_W-MARGIN, y=0)
+    hn_rect_w = hn_content_w + 2 * pad
+    hn_rect_h = hn_content_h + 2 * pad
     hn_rect_x = PAGE_W - MARGIN - hn_rect_w
-    hn_rect_y = MARGIN
+    hn_rect_y = 0
 
     dwg.add(dwg.rect(
         insert=(hn_rect_x, hn_rect_y),
         size=(hn_rect_w, hn_rect_h),
         fill="white",
         stroke="none",
-        rx=4, ry=4,
     ))
 
-    # Circle: centred horizontally, MARGIN from rect top
+    # Circle: centred in rect horizontally, pad from rect top
     hn_cx = hn_rect_x + hn_rect_w / 2
-    hn_cy = hn_rect_y + MARGIN + HOLE_NUMBER_CIRCLE_RADIUS
+    hn_cy = hn_rect_y + pad + HOLE_NUMBER_CIRCLE_RADIUS
     dwg.add(dwg.circle(
         center=(hn_cx, hn_cy),
         r=HOLE_NUMBER_CIRCLE_RADIUS,
@@ -189,8 +237,8 @@ def render_hole_page(
         dominant_baseline="central",
     ))
 
-    # Par text: 6pt gap below circle bottom, 9pt ascender
-    par_y = hn_cy + HOLE_NUMBER_CIRCLE_RADIUS + 6 + 9
+    # Par text: 4pt gap below circle bottom, then ascender
+    par_y = hn_cy + HOLE_NUMBER_CIRCLE_RADIUS + 4 + _text_ascender(9)
     dwg.add(dwg.text(
         par_label,
         insert=(hn_cx, par_y),
@@ -206,40 +254,43 @@ def render_hole_page(
     )
 
     if sorted_tees:
-        # Content dimensions
-        line_h = 16.0
+        pad = MARGIN / 2
+        fs = 12
+        line_h = _text_ascender(fs) + _text_descender(fs)  # 15.84pt
         n = len(sorted_tees)
         line_texts = [f"{tee_name.upper()} : {yardage}" for tee_name, yardage in sorted_tees]
-        yd_content_w = max(_text_width(t, 12) for t in line_texts)
-        yd_content_h = (n - 1) * line_h + 12  # baseline span + 12pt descender allowance
 
-        # Rect: anchored to printable bottom-right corner
-        yd_rect_w = yd_content_w + 2 * MARGIN
-        yd_rect_h = yd_content_h + 2 * MARGIN
+        # Content bbox — measure actual rendered width via cairosvg (exact, adapts to any tee name)
+        _ff = "JetBrainsMonoNL NFM, JetBrainsMono, monospace"
+        content_w = max(_measure_text_width(t, fs, _ff) for t in line_texts)
+        content_h = _text_ascender(fs) + (n - 1) * line_h + _text_descender(fs)
+
+        # Rect: bbox + padding, bottom-right corner at printable bottom-right
+        yd_rect_w = content_w + 2 * pad
+        yd_rect_h = content_h + 2 * pad
         yd_rect_x = PAGE_W - MARGIN - yd_rect_w
-        yd_rect_y = PAGE_CONTENT_H - MARGIN - yd_rect_h
+        yd_rect_y = PAGE_CONTENT_H - yd_rect_h
 
         dwg.add(dwg.rect(
             insert=(yd_rect_x, yd_rect_y),
             size=(yd_rect_w, yd_rect_h),
             fill="white",
             stroke="none",
-            rx=4, ry=4,
         ))
 
-        # Text: right-aligned, first baseline MARGIN + 12pt ascender from rect top
-        yd_text_right = yd_rect_x + yd_rect_w - MARGIN
-        y_tee = yd_rect_y + MARGIN + 12
+        # Text: right-aligned to rect interior right edge — colons align naturally
+        text_x = yd_rect_x + yd_rect_w - pad
+        text_y = yd_rect_y + pad + _text_ascender(fs)
         for tee_name, yardage in sorted_tees:
             dwg.add(dwg.text(
                 f"{tee_name.upper()} : {yardage}",
-                insert=(yd_text_right, y_tee),
-                font_size="12pt",
+                insert=(text_x, text_y),
+                font_size=f"{fs}pt",
                 font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
                 fill="#000000",
                 text_anchor="end",
             ))
-            y_tee += line_h
+            text_y += line_h
 
     return dwg.tostring()
 

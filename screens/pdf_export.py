@@ -122,7 +122,8 @@ class PDFExportScreen(Screen):
         else:
             data_dir = Path(__file__).parent.parent.parent.parent / "data"
 
-        output_dir = data_dir / "plugins" / "cartographer" / "export" / f"{self.course_name}_yardage_book"
+        safe_name = self.course_name.lower().replace(" ", "_").replace("'", "").replace('"', "")
+        output_dir = data_dir / "plugins" / "cartographer" / "yardage_books" / safe_name
 
         def progress_callback(current: int, total: int) -> None:
             self.app.call_from_thread(self._update_status, f"Generating page {current}/{total}...")

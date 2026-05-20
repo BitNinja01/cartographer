@@ -95,6 +95,8 @@ def render_hole(
     # Render order: rough → fairway → water → paths → bunkers → green → tees → arcs
     for feature_type in ("rough_boundary", "fairway", "water", "bunkers", "green"):
         stroke_col, fill_col = _COLOURS[feature_type]
+        if feature_type == "rough_boundary":
+            fill_col = _COLOURS["fairway"][1]
         rings = hole_geom.get(feature_type, [])
         g = dwg.g()
         _draw_polygons(dwg, g, rings, stroke=stroke_col, fill=fill_col)
@@ -142,12 +144,16 @@ def render_hole(
     return dwg.tostring()
 
 
-def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = False) -> str:
+def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = False, rotation_deg: float | None = None) -> str:
     """Render a green detail SVG with a grid overlay.
 
     green_geom: a hole geometry dict (only 'green' key is used).
     canvas_size: the width and height of the square SVG canvas in points.
     fitted: if True, green rings are already fitted — skip fit_hole().
+    rotation_deg: rotation angle to use when fitting green-only geometry.
+        If None and fitted=False, computed from the green geometry (which
+        may not match the full hole orientation). Pass the rotation from
+        the full hole to make the green grid match the hole layout.
     """
     dwg = svgwrite.Drawing(
         size=(f"{canvas_size}pt", f"{canvas_size}pt"),
@@ -161,6 +167,7 @@ def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = Fa
             {"green": green_geom.get("green", []),
              "fairway": [], "bunkers": [], "water": [], "rough_boundary": [], "tee_boxes": {}},
             canvas_size, canvas_size, padding=15.0,
+            rotation=rotation_deg,
         )
     raw["green"] = [chaikin_smooth(r) for r in raw.get("green", [])]
 
@@ -174,11 +181,11 @@ def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = Fa
     for i in range(1, 6):
         dwg.add(dwg.line(
             start=(i * grid_step, 0), end=(i * grid_step, canvas_size),
-            stroke="#000000", stroke_width=0.3,
+            stroke="#ccc", stroke_width=0.3,
         ))
         dwg.add(dwg.line(
             start=(0, i * grid_step), end=(canvas_size, i * grid_step),
-            stroke="#000000", stroke_width=0.3,
+            stroke="#ccc", stroke_width=0.3,
         ))
 
     return dwg.tostring()
@@ -264,3 +271,99 @@ def svg_to_png(svg: str, target_w: int, target_h: int) -> bytes:
     out = io.BytesIO()
     img.save(out, "PNG")
     return out.getvalue()
+
+
+def render_course_overview(
+    projected: dict,
+    canvas_w: float,
+    canvas_h: float,
+    padding: float = 20.0,
+) -> str:
+    """Render all 18 holes as a course overview SVG.
+
+    projected: output of project_course() — pixel coords per hole.
+    canvas_w, canvas_h: SVG canvas dimensions in points.
+    padding: margin around the course geometry.
+    """
+    dwg = svgwrite.Drawing(
+        size=(f"{canvas_w}pt", f"{canvas_h}pt"),
+        viewBox=f"0 0 {canvas_w} {canvas_h}",
+    )
+    dwg.add(dwg.rect(insert=(0, 0), size=(canvas_w, canvas_h), fill="white"))
+
+    # Collect all geometry from all holes and compute global bounds
+    all_features: dict[str, list] = {ft: [] for ft in ("fairway", "green", "bunkers", "rough_boundary")}
+    all_tees: list[tuple[float, float]] = []
+    global_min_x = global_min_y = float("inf")
+    global_max_x = global_max_y = float("-inf")
+
+    for hole_num in range(1, 19):
+        hole = projected.get(str(hole_num), {})
+        for ft in all_features:
+            for ring in hole.get(ft, []):
+                if ring:
+                    all_features[ft].append(ring)
+                    for x, y in ring:
+                        global_min_x = min(global_min_x, x)
+                        global_min_y = min(global_min_y, y)
+                        global_max_x = max(global_max_x, x)
+                        global_max_y = max(global_max_y, y)
+        for tx, ty in hole.get("tee_boxes", {}).values():
+            all_tees.append((tx, ty))
+            global_min_x = min(global_min_x, tx)
+            global_min_y = min(global_min_y, ty)
+            global_max_x = max(global_max_x, tx)
+            global_max_y = max(global_max_y, ty)
+
+    if global_min_x == float("inf"):
+        return dwg.tostring()
+
+    geom_w = global_max_x - global_min_x or 1.0
+    geom_h = global_max_y - global_min_y or 1.0
+    avail_w = canvas_w - 2 * padding
+    avail_h = canvas_h - 2 * padding
+    scale = min(avail_w / geom_w, avail_h / geom_h)
+
+    offset_x = padding + (avail_w - geom_w * scale) / 2 - global_min_x * scale
+    offset_y = padding + (avail_h - geom_h * scale) / 2 - global_min_y * scale
+
+    def tx(x: float, y: float) -> tuple[float, float]:
+        return x * scale + offset_x, y * scale + offset_y
+
+    def tx_ring(ring: list) -> list:
+        return [list(tx(x, y)) for x, y in ring]
+
+    # Render features with thin strokes
+    thin_stroke = 0.4
+    for feature_type in ("rough_boundary", "fairway", "bunkers", "green"):
+        rings = all_features[feature_type]
+        if not rings:
+            continue
+        stroke_col, fill_col = _COLOURS[feature_type]
+        if feature_type == "rough_boundary":
+            fill_col = _COLOURS["fairway"][1]
+        g = dwg.g()
+        for ring in rings:
+            pts = tx_ring(ring)
+            if len(pts) >= 3:
+                g.add(dwg.polygon(
+                    points=pts,
+                    fill=fill_col,
+                    stroke=stroke_col,
+                    stroke_width=thin_stroke,
+                    stroke_linejoin="round",
+                ))
+        dwg.add(g)
+
+    # Tee box markers
+    for tx_pos, ty_pos in all_tees:
+        sx, sy = tx(tx_pos, ty_pos)
+        dwg.add(dwg.circle(
+            center=(sx, sy),
+            r=1.5,
+            fill=_COLOURS["fairway"][1],
+            stroke=_COLOURS["rough_boundary"][0],
+            stroke_width=0.3,
+        ))
+
+    return dwg.tostring()
