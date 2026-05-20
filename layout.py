@@ -206,29 +206,30 @@ def render_hole_page(
     )
 
     if sorted_tees:
-        # Compute text group bounding box
+        # Content dimensions
         line_h = 16.0
         n = len(sorted_tees)
-        line_texts = [f"{n.upper()} : {y}" for n, y in sorted_tees]
-        text_w = max(_text_width(t, 12) for t in line_texts)
-        text_h = (n - 1) * line_h + 15  # ascender of first line to descender of last
+        line_texts = [f"{tee_name.upper()} : {yardage}" for tee_name, yardage in sorted_tees]
+        yd_content_w = max(_text_width(t, 12) for t in line_texts)
+        yd_content_h = (n - 1) * line_h + 12  # baseline span + 12pt descender allowance
 
-        # Rectangle: text bbox + MARGIN padding on each side
-        bg_w = text_w + 2 * MARGIN
-        bg_h = text_h + 2 * MARGIN
-        bg_right = PAGE_W - MARGIN  # flush with printable right
-        bg_bottom = PAGE_CONTENT_H   # flush with printable bottom
+        # Rect: anchored to printable bottom-right corner
+        yd_rect_w = yd_content_w + 2 * MARGIN
+        yd_rect_h = yd_content_h + 2 * MARGIN
+        yd_rect_x = PAGE_W - MARGIN - yd_rect_w
+        yd_rect_y = PAGE_CONTENT_H - MARGIN - yd_rect_h
 
         dwg.add(dwg.rect(
-            insert=(bg_right - bg_w, bg_bottom - bg_h),
-            size=(bg_w, bg_h),
+            insert=(yd_rect_x, yd_rect_y),
+            size=(yd_rect_w, yd_rect_h),
             fill="white",
             stroke="none",
             rx=4, ry=4,
         ))
 
-        yd_text_right = bg_right - MARGIN
-        y_tee = bg_bottom - MARGIN - 3 - (n - 1) * line_h  # last-line descender + line steps up
+        # Text: right-aligned, first baseline MARGIN + 12pt ascender from rect top
+        yd_text_right = yd_rect_x + yd_rect_w - MARGIN
+        y_tee = yd_rect_y + MARGIN + 12
         for tee_name, yardage in sorted_tees:
             dwg.add(dwg.text(
                 f"{tee_name.upper()} : {yardage}",
