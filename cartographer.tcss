@@ -10,40 +10,64 @@
 
 /* PDF Export Screen */
 #pdf-export-container {
-    width: 100%;
-    height: 100%;
-    align: center middle;
+    width: 1fr;
+    height: 1fr;
+}
+
+#pdf-export-content {
+    width: 1fr;
+    height: 1fr;
 }
 
 #pdf-export-header {
+    width: auto;
     text-align: center;
     text-style: bold;
     margin: 1;
 }
 
-#pdf-export-controls {
-    width: 80;
+.pdf-section {
     height: auto;
-    align: center middle;
-    margin: 2;
-}
-
-#slot-selectors {
-    width: 50;
-    height: auto;
-}
-
-#slot-selectors Static {
-    margin-top: 1;
-}
-
-#slot-selectors Select {
-    width: 100%;
+    border: round $panel;
+    border-title-color: $text-muted;
+    padding: 0 1 1 1;
     margin-bottom: 1;
 }
 
-#stats-checkbox {
-    margin-left: 4;
+.section-inner {
+    width: auto;
+    height: auto;
+}
+
+#slot-section Static {
+    margin-top: 1;
+    text-align: center;
+}
+
+#slot-section Select {
+    width: 40;
+    margin-bottom: 1;
+}
+
+#options-section Checkbox {
+    width: auto;
+    margin: 1;
+}
+
+#options-section #tees-label {
+    width: auto;
+    text-align: center;
+    margin-top: 1;
+}
+
+#options-section #tees-selection {
+    width: 40;
+    margin: 1;
+}
+
+#options-section #output-dir-input {
+    width: 40;
+    margin: 1;
 }
 
 #generate-button {
@@ -52,10 +76,23 @@
 }
 
 #status-widget {
-    width: 80;
+    width: 1fr;
     text-align: center;
     margin: 1;
     color: $success;
+}
+
+#status-widget.status-error {
+    color: $error;
+}
+
+#loading-indicator {
+    width: 1fr;
+    margin: 1;
+}
+
+ErrorModal {
+    align: center middle;
 }
 
 /* Error Modal */

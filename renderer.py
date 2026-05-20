@@ -26,6 +26,7 @@ _STROKE_WIDTH = 0.644586
 # Hole layout canvas size (SVG user units = points at 72dpi, 4.25" wide)
 HOLE_CANVAS_W = 306.0   # 4.25 * 72
 HOLE_CANVAS_H = 504.0   # 7" for hole diagram section
+HOLE_LEFT_BIAS = 100.0  # pts — shift hole leftward; clamped to padding floor in fit_hole()
 
 
 def _draw_polygons(
@@ -144,21 +145,30 @@ def render_hole(
     return dwg.tostring()
 
 
-def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = False, rotation_deg: float | None = None) -> str:
+def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = False, rotation_deg: float | None = None, canvas_w: float | None = None, canvas_h: float | None = None) -> str:
     """Render a green detail SVG with a grid overlay.
 
     green_geom: a hole geometry dict (only 'green' key is used).
-    canvas_size: the width and height of the square SVG canvas in points.
+    canvas_size: fallback square canvas size if canvas_w/canvas_h not provided.
+    canvas_w: explicit canvas width; defaults to canvas_size.
+    canvas_h: explicit canvas height; defaults to canvas_size.
     fitted: if True, green rings are already fitted — skip fit_hole().
     rotation_deg: rotation angle to use when fitting green-only geometry.
         If None and fitted=False, computed from the green geometry (which
         may not match the full hole orientation). Pass the rotation from
         the full hole to make the green grid match the hole layout.
     """
+    # ch is the square fitting region; cw is the full slot width for horizontal line extension
+    ch = canvas_h if canvas_h is not None else canvas_size
+    cw = canvas_w if canvas_w is not None else canvas_size
+
     dwg = svgwrite.Drawing(
-        size=(f"{canvas_size}pt", f"{canvas_size}pt"),
-        viewBox=f"0 0 {canvas_size} {canvas_size}",
+        size=(f"{cw}pt", f"{ch}pt"),
+        viewBox=f"0 0 {cw} {ch}",
     )
+
+    # Green is fitted to a ch×ch square, then centered horizontally in the cw-wide canvas
+    x_offset = (cw - ch) / 2
 
     if fitted:
         raw = {"green": green_geom.get("green", [])}
@@ -166,26 +176,28 @@ def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = Fa
         raw, _, _, _ = fit_hole(
             {"green": green_geom.get("green", []),
              "fairway": [], "bunkers": [], "water": [], "rough_boundary": [], "tee_boxes": {}},
-            canvas_size, canvas_size, padding=15.0,
+            ch, ch, padding=15.0,
             rotation=rotation_deg,
         )
     raw["green"] = [chaikin_smooth(r) for r in raw.get("green", [])]
 
     stroke_col, fill_col = _COLOURS["green"]
-    g = dwg.g()
+    g = dwg.g(transform=f"translate({x_offset}, 0)")
     _draw_polygons(dwg, g, raw.get("green", []), stroke=stroke_col, fill=fill_col)
     dwg.add(g)
 
-    # Grid overlay
-    grid_step = canvas_size / 6
+    # Grid overlay:
+    # - Vertical lines: spaced and positioned within the centered square region
+    # - Horizontal lines: extend full slot width (cw) edge to edge
+    grid_step = ch / 6
     for i in range(1, 6):
         dwg.add(dwg.line(
-            start=(i * grid_step, 0), end=(i * grid_step, canvas_size),
-            stroke="#ccc", stroke_width=0.3,
+            start=(x_offset + i * grid_step, 0), end=(x_offset + i * grid_step, ch),
+            stroke="#999", stroke_width=0.3,
         ))
         dwg.add(dwg.line(
-            start=(0, i * grid_step), end=(canvas_size, i * grid_step),
-            stroke="#ccc", stroke_width=0.3,
+            start=(0, i * grid_step), end=(cw, i * grid_step),
+            stroke="#999", stroke_width=0.3,
         ))
 
     return dwg.tostring()

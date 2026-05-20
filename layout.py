@@ -275,6 +275,7 @@ def render_hole_page(
             insert=(yd_rect_x, yd_rect_y),
             size=(yd_rect_w, yd_rect_h),
             fill="white",
+            fill_opacity=0.75,
             stroke="none",
         ))
 
@@ -531,11 +532,9 @@ def compose_front_page(
 
     if sorted_tees:
         col_gap = 4.0
-        name_w = max(_text_width(f"{n.upper()} :", 11) for n, _ in sorted_tees)
-        yardage_w = max(_text_width(str(y), 11) for _, y in sorted_tees)
-        total_w = name_w + col_gap + yardage_w
-        block_left = (PAGE_W - total_w) / 2
-        col_x = block_left + name_w
+        space_w = _text_width(" ", 11)
+        colon_w = _text_width(":", 11)
+        col_x = PAGE_W / 2 + colon_w / 6
         y = table_y
         for tee_name, yardage in sorted_tees:
             dwg.add(dwg.text(
@@ -548,7 +547,7 @@ def compose_front_page(
             ))
             dwg.add(dwg.text(
                 str(yardage),
-                insert=(col_x + col_gap, y),
+                insert=(col_x + col_gap + space_w, y),
                 font_size="11pt",
                 font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
                 fill="#212121",

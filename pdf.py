@@ -27,6 +27,7 @@ from cartographer.layout import (
 
 HOLE_CANVAS_W = 306.0   # 4.25 * 72
 HOLE_CANVAS_H = 504.0   # 7" for hole diagram section
+HOLE_LEFT_BIAS = 50.0   # pts — shift hole leftward on top pages; clamped to padding floor in fit_hole()
 
 
 def _svg_to_pdf_bytes(svg_string: str) -> bytes:
@@ -54,7 +55,7 @@ def _get_hole_render_data(
         return None
 
     hole_geom = smooth_hole_geometry(hole_geom)
-    fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H)
+    fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H, left_bias=HOLE_LEFT_BIAS)
 
     ppy = float(scale_data.get("pixels_per_yard", 1.0))
     if settings.get("cartographer.yardage_arcs", True):
@@ -72,9 +73,9 @@ def _get_hole_render_data(
     slot2_svg = ""
     green_rot = get_green_rotation(hole_geom)
     if slot1_mode == "green_grid":
-        slot1_svg = render_green({"green": hole_geom.get("green", [])}, canvas_size=SLOT_H, rotation_deg=green_rot)
+        slot1_svg = render_green({"green": hole_geom.get("green", [])}, canvas_w=PAGE_W, canvas_h=SLOT_H, rotation_deg=green_rot)
     if slot2_mode == "green_grid":
-        slot2_svg = render_green({"green": hole_geom.get("green", [])}, canvas_size=SLOT_H, rotation_deg=green_rot)
+        slot2_svg = render_green({"green": hole_geom.get("green", [])}, canvas_w=PAGE_W, canvas_h=SLOT_H, rotation_deg=green_rot)
 
     return {
         "hole_svg": hole_svg,
@@ -195,9 +196,11 @@ def generate_book(
     booklets_dir.mkdir(parents=True, exist_ok=True)
     narrow_pdfs: list[bytes] = []
 
+    total_steps = 25  # 20 sheets + 5 booklets
+
     for page_idx in range(0, 20):
         if progress_callback:
-            progress_callback(page_idx + 1, 20)
+            progress_callback(page_idx + 1, total_steps)
 
         if page_idx <= 8:
             top_hole = 9 - page_idx
@@ -337,6 +340,8 @@ def generate_book(
     ]
 
     for booklet_idx, (left_pair, right_pair) in enumerate(booklet_pages, start=1):
+        if progress_callback:
+            progress_callback(20 + booklet_idx, total_steps)
         writer = PdfWriter()
 
         for pair in (left_pair, right_pair):

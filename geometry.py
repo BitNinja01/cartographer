@@ -198,12 +198,16 @@ def fit_hole(
     canvas_height: float,
     padding: float = 20.0,
     rotation: float | None = None,
+    left_bias: float = 0.0,
 ) -> tuple[dict, float, float, float]:
     """Rotate hole so green faces top, then scale and centre within canvas bounds.
 
     If rotation is provided (degrees), use it directly instead of computing
     from hole geometry — useful when fitting a subset of features (e.g. green
     only) while preserving the orientation from the full hole.
+
+    left_bias shifts the hole leftward by that many canvas units after centering,
+    clamped so the hole never exits the padding boundary on the left side.
 
     Returns (transformed_hole_geom, offset_x, offset_y, scale_factor).
     The returned geom has coordinates ready for SVG rendering.
@@ -244,6 +248,11 @@ def fit_hole(
     scale_factor = min(avail_w / geom_w, avail_h / geom_h)
 
     offset_x = padding + (avail_w - geom_w * scale_factor) / 2 - min_x * scale_factor
+    offset_x -= left_bias
+    # Clamp: ensure the left edge of the geometry stays >= padding
+    left_edge = min_x * scale_factor + offset_x
+    if left_edge < padding:
+        offset_x += padding - left_edge
     offset_y = padding + (avail_h - geom_h * scale_factor) / 2 - min_y * scale_factor
 
     def transform_point(px: float, py: float) -> tuple[float, float]:
