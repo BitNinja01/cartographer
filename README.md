@@ -1,5 +1,3 @@
-# Cartographer
-
 [![Release](https://img.shields.io/github/v/release/BitNinja01/pinsheet-cartographer.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/pinsheet-cartographer/releases)
 [![Downloads](https://img.shields.io/github/downloads/BitNinja01/pinsheet-cartographer/total.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/pinsheet-cartographer/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/BitNinja01/pinsheet-cartographer/ci.yml?branch=dev&style=for-the-badge&label=CI)](https://github.com/BitNinja01/pinsheet-cartographer/actions)
@@ -10,6 +8,12 @@
   <img src="docs/img/logo_light.svg#gh-light-mode-only" alt="Cartographer Logo" width="500">
   <img src="docs/img/logo_dark.svg#gh-dark-mode-only" alt="Cartographer Logo" width="500">
 </p>
+
+---
+
+> Track what matters. Compute what's honest. Surface what helps. Own your own data.
+
+---
 
 A plugin for [PinSheet](https://github.com/BitNinja01/pinsheet), the golf stats and round tracking app. Generates yardage book PDFs from OpenStreetMap course geometry.
 
