@@ -1,9 +1,9 @@
 # Cartographer
 
-[![Release](https://img.shields.io/github/v/release/BitNinja01/cartographer.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/cartographer/releases)
-[![Downloads](https://img.shields.io/github/downloads/BitNinja01/cartographer/total.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/cartographer/releases)
-[![CI](https://img.shields.io/github/actions/workflow/status/BitNinja01/cartographer/ci.yml?branch=dev&style=for-the-badge&label=CI)](https://github.com/BitNinja01/cartographer/actions)
-[![Platform](https://img.shields.io/badge/Platforms-Linux%20|%20macOS%20|%20Windows-white.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/cartographer)
+[![Release](https://img.shields.io/github/v/release/BitNinja01/pinsheet-cartographer.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/pinsheet-cartographer/releases)
+[![Downloads](https://img.shields.io/github/downloads/BitNinja01/pinsheet-cartographer/total.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/pinsheet-cartographer/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/BitNinja01/pinsheet-cartographer/ci.yml?branch=dev&style=for-the-badge&label=CI)](https://github.com/BitNinja01/pinsheet-cartographer/actions)
+[![Platform](https://img.shields.io/badge/Platforms-Linux%20|%20macOS%20|%20Windows-white.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/pinsheet-cartographer)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg?style=for-the-badge&color=green)](https://www.python.org/downloads/)
 
 <p align="center">
@@ -45,13 +45,13 @@ Requires PinSheet v1.9.7+.
 
 ### Option 1: Release zip (recommended)
 
-Download the latest release from the [releases page](https://github.com/BitNinja01/cartographer/releases) and extract it into PinSheet's `plugins/` directory:
+Download the latest release from the [releases page](https://github.com/BitNinja01/pinsheet-cartographer/releases) and extract it into PinSheet's `plugins/` directory:
 
 ```bash
 # From your PinSheet install directory
 mkdir -p plugins
 cd plugins
-wget https://github.com/BitNinja01/cartographer/releases/latest/download/cartographer_1.0.1.zip
+wget https://github.com/BitNinja01/pinsheet-cartographer/releases/latest/download/cartographer_1.0.1.zip
 unzip cartographer_1.0.1.zip -d cartographer
 cd cartographer
 pip install -r requirements.txt
@@ -63,7 +63,7 @@ pip install -r requirements.txt
 # From your PinSheet install directory
 mkdir -p plugins
 cd plugins
-git clone https://github.com/BitNinja01/cartographer.git
+git clone https://github.com/BitNinja01/pinsheet-cartographer.git
 cd cartographer
 pip install -r requirements.txt
 ```
