@@ -42,7 +42,7 @@ def start_tagger(course_name: str, osm_path: Path) -> threading.Event:
                 })
             else:
                 coords = [[pt[1], pt[0]] for pt in f["geometry"]]
-                if f["type"] == "path":
+                if f["type"] in ("path", "waterway"):
                     geojson_features.append({
                         "type": "Feature",
                         "geometry": {"type": "LineString", "coordinates": coords},
