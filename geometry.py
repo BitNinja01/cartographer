@@ -42,6 +42,48 @@ def compute_pixels_per_yard(
     return distance_yards / actual_yards if actual_yards > 0 else 1.0
 
 
+def compute_pixels_per_yard_from_geometry(
+    holes: dict,
+    canvas_h: float = 504.0,
+    padding: float = 20.0,
+) -> float:
+    """Derive pixels_per_yard from the geographic bounding box of hole geometry.
+
+    Computes the haversine diagonal of the course's lat/lon bounding box,
+    then sets pixels_per_yard so that diagonal fills the canvas height minus
+    padding. This ensures yardage arc radii are correctly proportioned relative
+    to the projected hole geometry after fit_hole() scaling.
+
+    Returns 1.0 if no coordinates are available (safe fallback).
+    """
+    all_lats: list[float] = []
+    all_lons: list[float] = []
+
+    for hole_data in holes.values():
+        for feature_type in ("fairway", "green", "bunkers", "water", "waterways",
+                             "rough_boundary", "paths"):
+            for ring in hole_data.get(feature_type, []):
+                for pt in ring:
+                    all_lats.append(pt[0])
+                    all_lons.append(pt[1])
+        for pt in hole_data.get("tee_boxes", {}).values():
+            all_lats.append(pt[0])
+            all_lons.append(pt[1])
+
+    if not all_lats:
+        return 1.0
+
+    min_lat, max_lat = min(all_lats), max(all_lats)
+    min_lon, max_lon = min(all_lons), max(all_lons)
+
+    diagonal_yards = _haversine_yards(min_lat, min_lon, max_lat, max_lon)
+    if diagonal_yards <= 0:
+        return 1.0
+
+    available_px = canvas_h - 2 * padding
+    return available_px / diagonal_yards
+
+
 def _latlon_to_xy(
     lat: float,
     lon: float,
@@ -86,7 +128,7 @@ def project_course(holes: dict, scale_data: dict) -> dict:
     # Collect all lat/lon points to find course centroid for projection origin
     all_lats, all_lons = [], []
     for hole_data in holes.values():
-        for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary", "paths"):
+        for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths"):
             for ring in hole_data.get(feature_type, []):
                 for pt in ring:
                     all_lats.append(pt[0])
@@ -111,7 +153,7 @@ def project_course(holes: dict, scale_data: dict) -> dict:
     for hole_num, hole_data in holes.items():
         ph: dict[str, Any] = {}
 
-        for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary", "paths"):
+        for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths"):
             rings = hole_data.get(feature_type, [])
             ph[feature_type] = [
                 project_ring(ring, origin_lat, origin_lon,
@@ -233,7 +275,7 @@ def fit_hole(
         return [list(rotate_point(x, y)) for x, y in ring]
 
     rotated: dict[str, Any] = {}
-    for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary", "paths"):
+    for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths"):
         rotated[feature_type] = [rotate_ring(r) for r in hole_geom.get(feature_type, [])]
     rotated["tee_boxes"] = {
         name: list(rotate_point(x, y))
@@ -262,7 +304,7 @@ def fit_hole(
         return [list(transform_point(x, y)) for x, y in ring]
 
     fitted: dict[str, Any] = {}
-    for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary", "paths"):
+    for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths"):
         fitted[feature_type] = [transform_ring(r) for r in rotated.get(feature_type, [])]
     fitted["tee_boxes"] = {
         name: list(transform_point(x, y))
@@ -317,16 +359,44 @@ def chaikin_smooth(ring: list[tuple[float, float]], iterations: int = 3) -> list
     return points
 
 
+def chaikin_smooth_open(line: list[tuple[float, float]], iterations: int = 3) -> list[tuple[float, float]]:
+    """Smooth an open polyline using Chaikin's corner-cutting algorithm.
+
+    Unlike chaikin_smooth(), this variant preserves the start and end
+    points exactly — no wrap-around edge between last and first point.
+    Use this for waterway linestrings and other open paths.
+    """
+    if len(line) < 2:
+        return line
+
+    points = line
+    for _ in range(iterations):
+        n = len(points)
+        smoothed = [points[0]]
+        for i in range(n - 1):
+            p0_x, p0_y = points[i]
+            p1_x, p1_y = points[i + 1]
+            smoothed.append((0.75 * p0_x + 0.25 * p1_x, 0.75 * p0_y + 0.25 * p1_y))
+            smoothed.append((0.25 * p0_x + 0.75 * p1_x, 0.25 * p0_y + 0.75 * p1_y))
+        smoothed.append(points[-1])
+        points = smoothed
+
+    return points
+
+
 def smooth_hole_geometry(hole_geom: dict, iterations: int = 3) -> dict:
-    """Apply Chaikin smoothing to all polygon rings in a hole geometry dict.
-    
+    """Apply Chaikin smoothing to all polygon rings and open lines in a hole geometry dict.
+
+    Closed polygon features (fairway, green, bunkers, water, rough_boundary) use the
+    closed chaikin_smooth(). Open linear features (paths, waterways) use chaikin_smooth_open().
     Tee box points are passed through unchanged.
     """
     smoothed = {}
     for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary"):
         rings = hole_geom.get(feature_type, [])
         smoothed[feature_type] = [chaikin_smooth(ring, iterations) for ring in rings]
-    # Paths are LineStrings, not closed polygons — pass through unsmoothed
-    smoothed["paths"] = hole_geom.get("paths", [])
+    # Open linear features — use open smoother that preserves endpoints
+    smoothed["paths"] = [chaikin_smooth_open(line, iterations) for line in hole_geom.get("paths", [])]
+    smoothed["waterways"] = [chaikin_smooth_open(line, iterations) for line in hole_geom.get("waterways", [])]
     smoothed["tee_boxes"] = hole_geom.get("tee_boxes", {})
     return smoothed

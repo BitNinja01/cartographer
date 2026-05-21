@@ -9,7 +9,7 @@ from __future__ import annotations
 import svgwrite
 
 from cartographer.data import load_courses_geo
-from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry, chaikin_smooth
+from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry, chaikin_smooth, compute_pixels_per_yard_from_geometry, get_green_centroid
 
 # Feature render colours — (stroke, fill)
 _COLOURS = {
@@ -17,6 +17,7 @@ _COLOURS = {
     "fairway":        ("#000000", "#ccebb0"),
     "water":          ("#000000", "#a8d1de"),
     "paths":          ("#000000", "#d4c9a8"),
+    "waterways":      ("#1565C0", "#a8d1de"),
     "bunkers":        ("#000000", "#f5e8c5"),
     "green":          ("#000000", "#87debd"),
 }
@@ -109,6 +110,14 @@ def render_hole(
     if paths:
         g = dwg.g()
         _draw_lines(dwg, g, paths, stroke=stroke_col)
+        dwg.add(g)
+
+    # Waterways are open LineStrings — draw with water colour, no fill
+    stroke_col, _ = _COLOURS["waterways"]
+    waterways = hole_geom.get("waterways", [])
+    if waterways:
+        g = dwg.g()
+        _draw_lines(dwg, g, waterways, stroke=stroke_col, stroke_width=1.5)
         dwg.add(g)
 
     # Tee box markers — same fill/stroke as rough/water
@@ -222,26 +231,22 @@ def render_hole_svg(course_name: str, hole_number: int, settings: dict | None = 
     if hole_key not in holes:
         return ""
 
-    projected = project_course(holes, scale_data)
+    # Compute ppy per-hole so arc radii are self-consistent with fit_hole scaling.
+    ppy = compute_pixels_per_yard_from_geometry({hole_key: holes[hole_key]}, canvas_h=HOLE_CANVAS_H)
+    effective_scale = {**scale_data, "pixels_per_yard": ppy}
+    projected = project_course(holes, effective_scale)
     hole_geom = projected.get(hole_key, {})
     hole_geom = smooth_hole_geometry(hole_geom)
 
     fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H)
 
-    # Attach arc data to fitted geom using pixels_per_yard from scale_data.
-    # ppy is in raw projected-pixel space; scale is fit_hole's shrink factor.
-    ppy = float(scale_data.get("pixels_per_yard", 1.0))
+    # ppy derived from this hole's geometry; scale is fit_hole's shrink factor.
     if settings is None:
         settings = {}
     if settings.get("cartographer.yardage_arcs", True):
         distances = settings.get("cartographer.yardage_arc_distances", [100, 125, 150])
-        green_rings = fitted.get("green", [])
-        if green_rings:
-            all_pts = [pt for ring in green_rings for pt in ring]
-            if all_pts:
-                gcx = sum(p[0] for p in all_pts) / len(all_pts)
-                gcy = sum(p[1] for p in all_pts) / len(all_pts)
-                fitted["_arcs"] = [(gcx, gcy, d * ppy * scale) for d in distances]
+        gcx, gcy = get_green_centroid(fitted)
+        fitted["_arcs"] = [(gcx, gcy, d * ppy * scale) for d in distances]
 
     return render_hole(fitted, settings=settings)
 

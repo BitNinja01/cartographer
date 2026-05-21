@@ -51,13 +51,29 @@ class TestClassifyWaterTags:
         assert _classify_tags({"natural": "water"}) == "water"
 
     def test_classify_waterway_stream(self):
-        assert _classify_tags({"waterway": "stream"}) == "water"
+        assert _classify_tags({"waterway": "stream"}) == "waterway"
 
     def test_classify_waterway_river(self):
-        assert _classify_tags({"waterway": "river"}) == "water"
+        assert _classify_tags({"waterway": "river"}) == "waterway"
 
     def test_classify_water_key(self):
         assert _classify_tags({"water": "pond"}) == "water"
+
+    def test_classify_bridged_stream_survives(self):
+        """waterway=stream + bridge=yes must not be excluded — bridge is co-tagged on the stream."""
+        assert _classify_tags({"waterway": "stream", "bridge": "yes"}) == "waterway"
+
+    def test_classify_culverted_stream_survives(self):
+        """waterway=stream + tunnel=culvert must not be excluded."""
+        assert _classify_tags({"waterway": "stream", "tunnel": "culvert"}) == "waterway"
+
+    def test_classify_named_stream_survives(self):
+        """waterway=stream + name=... is common in OSM and must classify correctly."""
+        assert _classify_tags({"waterway": "stream", "name": "Covington Creek"}) == "waterway"
+
+    def test_classify_golf_water_hazard_still_water(self):
+        """golf=water_hazard is always a closed polygon — must remain 'water'."""
+        assert _classify_tags({"golf": "water_hazard"}) == "water"
 
 
 class TestClassifyLanduseGrass:

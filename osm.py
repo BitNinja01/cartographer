@@ -24,7 +24,7 @@ _GOLF_TAG_MAP = {
 
 # Tag patterns for non-golf features that should be excluded entirely
 _EXCLUDE_TAGS = {"highway", "building", "amenity", "bridge", "tunnel",
-                 "railway", "power", "man_made", "leisure"}
+                 "railway", "power", "man_made", "leisure", "boundary", "place"}
 
 
 def _classify_tags(tags: dict[str, str]) -> str | None:
@@ -32,6 +32,14 @@ def _classify_tags(tags: dict[str, str]) -> str | None:
     # Allow cart paths through despite having excluded tags like highway=path
     if tags.get("golf") == "cartpath":
         return "path"
+
+    # Allow waterways through before the infrastructure exclude check.
+    # OSM commonly co-tags streams/rivers with bridge=yes, tunnel=culvert, etc.
+    # for segments passing under paths — these must not be silently dropped.
+    if tags.get("waterway") in ("stream", "river", "ditch", "canal", "drain"):
+        return "waterway"
+    if tags.get("natural") == "water" or tags.get("water"):
+        return "water"
 
     # Exclude obviously non-golf infrastructure
     if any(k in _EXCLUDE_TAGS for k in tags):
@@ -43,14 +51,6 @@ def _classify_tags(tags: dict[str, str]) -> str | None:
     if golf == "hole":
         # Hole boundary markers — skip, not a renderable feature
         return None
-
-    # Water features (multiple tagging schemes)
-    if tags.get("natural") == "water":
-        return "water"
-    if tags.get("waterway") in ("stream", "river", "ditch", "canal", "drain"):
-        return "water"
-    if tags.get("water"):
-        return "water"
 
     # Natural features — exclude (not needed for cartography)
     natural = tags.get("natural", "")
@@ -163,7 +163,11 @@ def parse_osm_file(path: Path) -> list[dict]:
             continue
         node_ids = way_node_refs[osm_id]
         ring = _nodes_to_ring(node_ids, node_coords)
-        min_nodes = 2 if feature_type == "path" else 3
+        # Closed waterway ways (first node == last node) represent area features
+        # (canal basins, river areas) — treat as filled polygons, not linestrings
+        if feature_type == "waterway" and len(ring) >= 3 and ring[0] == ring[-1]:
+            feature_type = "water"
+        min_nodes = 2 if feature_type in ("path", "waterway") else 3
         if len(ring) >= min_nodes:
             features.append({
                 "osm_id": osm_id,
