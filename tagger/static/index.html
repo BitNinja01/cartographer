@@ -537,12 +537,17 @@
       });
 
       const geojsonLayer = L.geoJSON(data, {
-        style: feature => ({
-          color: typeColours[feature.properties.type] || '#888',
-          fillColor: typeColours[feature.properties.type] || '#888',
-          fillOpacity: 0.4,
-          weight: 2,
-        }),
+        style: feature => {
+          const ftype = feature.properties.type;
+          const courseWide = ftype === 'water' || ftype === 'waterway' || ftype === 'path';
+          return {
+            color: typeColours[ftype] || '#888',
+            fillColor: typeColours[ftype] || '#888',
+            fillOpacity: 0.4,
+            weight: 2,
+            interactive: !courseWide,
+          };
+        },
         pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
           radius: 6,
           fillColor: typeColours[feature.properties.type] || '#888',
