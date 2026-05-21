@@ -4,7 +4,7 @@ from cartographer.geometry import (
     _haversine_yards, compute_pixels_per_yard, _latlon_to_xy,
     project_ring, project_course, get_hole_bounds, get_green_centroid,
     get_green_rotation, fit_hole, compute_yardage_arcs,
-    chaikin_smooth, smooth_hole_geometry,
+    chaikin_smooth, chaikin_smooth_open, smooth_hole_geometry,
 )
 
 # ---------------------------------------------------------------------------
@@ -338,6 +338,56 @@ def test_chaikin_smooth_default_iterations():
 
 
 # ---------------------------------------------------------------------------
+# chaikin_smooth_open — open polyline variant (no wrap-around)
+# ---------------------------------------------------------------------------
+
+class TestChaikinSmoothOpen:
+
+    def test_preserves_endpoints(self):
+        """Start and end points must be preserved exactly."""
+        line = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]
+        result = chaikin_smooth_open(line, iterations=1)
+        assert result[0] == (0.0, 0.0)
+        assert result[-1] == (10.0, 10.0)
+
+    def test_increases_point_count(self):
+        """Each iteration roughly doubles the point count (minus endpoints)."""
+        line = [(0.0, 0.0), (10.0, 0.0), (20.0, 10.0), (30.0, 0.0)]
+        result = chaikin_smooth_open(line, iterations=1)
+        # 4 points → 1 iteration → 2*(n-1) interior points + 2 endpoints = 2*3 + 2 = 8
+        assert len(result) == 8
+
+    def test_single_segment_midpoints(self):
+        """Single segment A=(0,0) → B=(4,0): after 1 iteration gives [A, q, r, B].
+        q = 0.75*A + 0.25*B = (1.0, 0.0), r = 0.25*A + 0.75*B = (3.0, 0.0).
+        """
+        line = [(0.0, 0.0), (4.0, 0.0)]
+        result = chaikin_smooth_open(line, iterations=1)
+        assert result[0] == (0.0, 0.0)
+        assert result[1] == (1.0, 0.0)
+        assert result[2] == (3.0, 0.0)
+        assert result[3] == (4.0, 0.0)
+
+    def test_short_line_passthrough(self):
+        """Lines with fewer than 2 points pass through unchanged."""
+        assert chaikin_smooth_open([], iterations=3) == []
+        assert chaikin_smooth_open([(1.0, 2.0)], iterations=3) == [(1.0, 2.0)]
+
+    def test_two_point_line(self):
+        """Two-point lines are valid open paths."""
+        line = [(0.0, 0.0), (10.0, 0.0)]
+        result = chaikin_smooth_open(line, iterations=1)
+        assert result[0] == (0.0, 0.0)
+        assert result[-1] == (10.0, 0.0)
+        assert len(result) == 4
+
+    def test_zero_iterations(self):
+        """Zero iterations returns the line unchanged."""
+        line = [(0.0, 0.0), (5.0, 3.0), (10.0, 0.0)]
+        assert chaikin_smooth_open(line, iterations=0) == line
+
+
+# ---------------------------------------------------------------------------
 # smooth_hole_geometry
 # ---------------------------------------------------------------------------
 
@@ -356,11 +406,11 @@ def test_smooth_hole_geometry_tee_boxes_unchanged(make_course_geo):
     assert smoothed["tee_boxes"] is original
 
 
-def test_smooth_hole_geometry_paths_unchanged(make_course_geo):
+def test_smooth_hole_geometry_paths_empty(make_course_geo):
     course = make_course_geo(num_holes=1)
     original = course["1"]["paths"]
     smoothed = smooth_hole_geometry(course["1"])
-    assert smoothed["paths"] is original
+    assert smoothed["paths"] == original
 
 
 def test_smooth_hole_geometry_increases_vertex_count(make_course_geo):

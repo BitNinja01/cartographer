@@ -317,16 +317,44 @@ def chaikin_smooth(ring: list[tuple[float, float]], iterations: int = 3) -> list
     return points
 
 
+def chaikin_smooth_open(line: list[tuple[float, float]], iterations: int = 3) -> list[tuple[float, float]]:
+    """Smooth an open polyline using Chaikin's corner-cutting algorithm.
+
+    Unlike chaikin_smooth(), this variant preserves the start and end
+    points exactly — no wrap-around edge between last and first point.
+    Use this for waterway linestrings and other open paths.
+    """
+    if len(line) < 2:
+        return line
+
+    points = line
+    for _ in range(iterations):
+        n = len(points)
+        smoothed = [points[0]]
+        for i in range(n - 1):
+            p0_x, p0_y = points[i]
+            p1_x, p1_y = points[i + 1]
+            smoothed.append((0.75 * p0_x + 0.25 * p1_x, 0.75 * p0_y + 0.25 * p1_y))
+            smoothed.append((0.25 * p0_x + 0.75 * p1_x, 0.25 * p0_y + 0.75 * p1_y))
+        smoothed.append(points[-1])
+        points = smoothed
+
+    return points
+
+
 def smooth_hole_geometry(hole_geom: dict, iterations: int = 3) -> dict:
-    """Apply Chaikin smoothing to all polygon rings in a hole geometry dict.
-    
+    """Apply Chaikin smoothing to all polygon rings and open lines in a hole geometry dict.
+
+    Closed polygon features (fairway, green, bunkers, water, rough_boundary) use the
+    closed chaikin_smooth(). Open linear features (paths, waterways) use chaikin_smooth_open().
     Tee box points are passed through unchanged.
     """
     smoothed = {}
     for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary"):
         rings = hole_geom.get(feature_type, [])
         smoothed[feature_type] = [chaikin_smooth(ring, iterations) for ring in rings]
-    # Paths are LineStrings, not closed polygons — pass through unsmoothed
-    smoothed["paths"] = hole_geom.get("paths", [])
+    # Open linear features — use open smoother that preserves endpoints
+    smoothed["paths"] = [chaikin_smooth_open(line, iterations) for line in hole_geom.get("paths", [])]
+    smoothed["waterways"] = [chaikin_smooth_open(line, iterations) for line in hole_geom.get("waterways", [])]
     smoothed["tee_boxes"] = hole_geom.get("tee_boxes", {})
     return smoothed
