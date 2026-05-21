@@ -20,7 +20,7 @@ A plugin for [PinSheet](https://github.com/BitNinja01/pinsheet), the golf stats 
 
 ### Setup
 
-Requires PinSheet v1.9.7+.
+Requires PinSheet v2.1.0+.
 
 ---
 
@@ -29,7 +29,7 @@ Requires PinSheet v1.9.7+.
 ### Prerequisites
 
 - **Python 3.11+**
-- **PinSheet v1.9.7+** — the parent app must be installed and its plugin system available
+- **PinSheet v2.1.0+** — the parent app must be installed and its plugin system available
 - **System libraries** — `cairosvg` needs libcairo2:
 
 | Platform | Command |
