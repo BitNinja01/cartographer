@@ -6,6 +6,11 @@
 [![Platform](https://img.shields.io/badge/Platforms-Linux%20|%20macOS%20|%20Windows-white.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/cartographer)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg?style=for-the-badge&color=green)](https://www.python.org/downloads/)
 
+<p align="center">
+  <img src="docs/img/logo_light.svg#gh-light-mode-only" alt="Cartographer Logo" width="500">
+  <img src="docs/img/logo_dark.svg#gh-dark-mode-only" alt="Cartographer Logo" width="500">
+</p>
+
 A PinSheet plugin that generates yardage book PDFs from OpenStreetMap course geometry.
 
 - **Hole View** — per-hole layout diagrams in-app, showing fairways, greens, bunkers, water, and yardage arcs
