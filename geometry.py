@@ -42,6 +42,48 @@ def compute_pixels_per_yard(
     return distance_yards / actual_yards if actual_yards > 0 else 1.0
 
 
+def compute_pixels_per_yard_from_geometry(
+    holes: dict,
+    canvas_h: float = 504.0,
+    padding: float = 20.0,
+) -> float:
+    """Derive pixels_per_yard from the geographic bounding box of hole geometry.
+
+    Computes the haversine diagonal of the course's lat/lon bounding box,
+    then sets pixels_per_yard so that diagonal fills the canvas height minus
+    padding. This ensures yardage arc radii are correctly proportioned relative
+    to the projected hole geometry after fit_hole() scaling.
+
+    Returns 1.0 if no coordinates are available (safe fallback).
+    """
+    all_lats: list[float] = []
+    all_lons: list[float] = []
+
+    for hole_data in holes.values():
+        for feature_type in ("fairway", "green", "bunkers", "water", "waterways",
+                             "rough_boundary", "paths"):
+            for ring in hole_data.get(feature_type, []):
+                for pt in ring:
+                    all_lats.append(pt[0])
+                    all_lons.append(pt[1])
+        for pt in hole_data.get("tee_boxes", {}).values():
+            all_lats.append(pt[0])
+            all_lons.append(pt[1])
+
+    if not all_lats:
+        return 1.0
+
+    min_lat, max_lat = min(all_lats), max(all_lats)
+    min_lon, max_lon = min(all_lons), max(all_lons)
+
+    diagonal_yards = _haversine_yards(min_lat, min_lon, max_lat, max_lon)
+    if diagonal_yards <= 0:
+        return 1.0
+
+    available_px = canvas_h - 2 * padding
+    return available_px / diagonal_yards
+
+
 def _latlon_to_xy(
     lat: float,
     lon: float,

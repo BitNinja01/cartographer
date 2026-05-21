@@ -5,6 +5,7 @@ from cartographer.geometry import (
     project_ring, project_course, get_hole_bounds, get_green_centroid,
     get_green_rotation, fit_hole, compute_yardage_arcs,
     chaikin_smooth, chaikin_smooth_open, smooth_hole_geometry,
+    compute_pixels_per_yard_from_geometry,
 )
 
 # ---------------------------------------------------------------------------
@@ -419,3 +420,54 @@ def test_smooth_hole_geometry_increases_vertex_count(make_course_geo):
     original_len = len(hole["fairway"][0])
     smoothed = smooth_hole_geometry(hole)
     assert len(smoothed["fairway"][0]) > original_len
+
+
+# ---------------------------------------------------------------------------
+# compute_pixels_per_yard_from_geometry
+# ---------------------------------------------------------------------------
+
+class TestComputePixelsPerYardFromGeometry:
+    """compute_pixels_per_yard_from_geometry derives ppy from course bounding box."""
+
+    def test_normal_course(self, make_course_geo):
+        """Returns a positive float for a course with geometry."""
+        holes = make_course_geo(num_holes=18)
+        ppy = compute_pixels_per_yard_from_geometry(holes, canvas_h=504.0, padding=20.0)
+        assert isinstance(ppy, float)
+        assert ppy > 0.0
+
+    def test_single_hole(self, make_course_geo):
+        """Works with a single hole."""
+        holes = make_course_geo(num_holes=1)
+        ppy = compute_pixels_per_yard_from_geometry(holes, canvas_h=504.0, padding=20.0)
+        assert ppy > 0.0
+
+    def test_empty_holes_returns_default(self):
+        """Empty holes dict returns 1.0 (safe fallback)."""
+        ppy = compute_pixels_per_yard_from_geometry({}, canvas_h=504.0, padding=20.0)
+        assert ppy == 1.0
+
+    def test_no_coordinates_returns_default(self):
+        """Holes with no coordinate data returns 1.0."""
+        holes = {"1": {"fairway": [], "green": [], "bunkers": [], "water": [],
+                       "waterways": [], "paths": [], "rough_boundary": [], "tee_boxes": {}}}
+        ppy = compute_pixels_per_yard_from_geometry(holes, canvas_h=504.0, padding=20.0)
+        assert ppy == 1.0
+
+    def test_realistic_latlon_range(self):
+        """A course spanning ~0.01 degrees lat/lon (~600-1200 yards) gives a
+        ppy in a reasonable range (0.1 to 10.0 px/yd for a 504px canvas)."""
+        holes = {
+            "1": {
+                "fairway": [[[47.600, -122.300], [47.605, -122.305], [47.603, -122.308]]],
+                "green": [], "bunkers": [], "water": [], "waterways": [],
+                "paths": [], "rough_boundary": [], "tee_boxes": {},
+            },
+            "18": {
+                "fairway": [[[47.610, -122.290], [47.612, -122.293], [47.608, -122.295]]],
+                "green": [], "bunkers": [], "water": [], "waterways": [],
+                "paths": [], "rough_boundary": [], "tee_boxes": {},
+            },
+        }
+        ppy = compute_pixels_per_yard_from_geometry(holes, canvas_h=504.0, padding=20.0)
+        assert 0.1 < ppy < 10.0
