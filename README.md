@@ -68,6 +68,8 @@ cd cartographer
 pip install -r requirements.txt
 ```
 
+The `pip install` step is also handled automatically: PinSheet's launcher (`launch.sh`/`launch.bat`) iterates over `plugins/*/requirements.txt` and installs dependencies at every startup.
+
 ### Verify installation
 
 Launch PinSheet — if installed correctly, you'll see Cartographer screens listed under plugin bindings. Check for:
