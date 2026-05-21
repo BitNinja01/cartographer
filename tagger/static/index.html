@@ -567,7 +567,7 @@
           layer.on('click', e => {
             if (scaleMode) return;
             const ftype = feature.properties.type;
-            if (ftype === 'water' || ftype === 'path') return;  // course-wide, not per-hole
+            if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;  // course-wide, not per-hole
 
             if (featureAssignments[id]) {
               delete featureAssignments[id];
