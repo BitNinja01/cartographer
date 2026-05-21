@@ -483,14 +483,14 @@
 
   const typeColours = {
     fairway: '#4CAF50', green: '#00796B', bunker: '#8D6E63',
-    water: '#1565C0', rough: '#228B22', tee: '#555', unclassified: '#888', path: '#FF8F00'
+    water: '#1565C0', waterway: '#1565C0', rough: '#228B22', tee: '#555', unclassified: '#888', path: '#FF8F00'
   };
 
   const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
 
   let featureAssignments = {};
   let scaleData = null;
-  const activeFilters = new Set(['fairway','green','bunker','water','path','tee','unclassified']);
+  const activeFilters = new Set(['fairway','green','bunker','water','waterway','path','tee','unclassified']);
   let allFeatures = [];
 
   function toggleFilter(type, visible) {
@@ -727,7 +727,7 @@
 
     const holes = {};
     for (let h = 1; h <= 18; h++) {
-      holes[String(h)] = {fairway:[], green:[], bunkers:[], tee_boxes:{}, water:[], paths:[], rough_boundary:[]};
+      holes[String(h)] = {fairway:[], green:[], bunkers:[], tee_boxes:{}, water:[], waterways:[], paths:[], rough_boundary:[]};
     }
     fetch('/api/features').then(r => r.json()).then(data => {
       data.features.forEach(f => {
@@ -737,11 +737,14 @@
         const hole = featureAssignments[id];
 
         // Water and paths are course-wide — auto-distribute to all 18 holes
-        if (type === 'water' || type === 'path') {
+        if (type === 'water' || type === 'waterway' || type === 'path') {
           const targetHoles = Object.keys(holes);
           if (geom.type === 'Polygon' && type === 'water') {
             const ring = geom.coordinates[0].map(c => [c[1], c[0]]);
             targetHoles.forEach(hk => holes[hk].water.push(ring));
+          } else if (geom.type === 'LineString' && type === 'waterway') {
+            const line = geom.coordinates.map(c => [c[1], c[0]]);
+            targetHoles.forEach(hk => holes[hk].waterways.push(line));
           } else if (geom.type === 'LineString' && type === 'path') {
             const line = geom.coordinates.map(c => [c[1], c[0]]);
             targetHoles.forEach(hk => holes[hk].paths.push(line));
@@ -765,6 +768,7 @@
         } else if (geom.type === 'LineString') {
           const line = geom.coordinates.map(c => [c[1], c[0]]);
           if (type === 'path') holes[hk].paths.push(line);
+          else if (type === 'waterway') holes[hk].waterways.push(line);
         }
       });
 
