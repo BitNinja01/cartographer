@@ -2,6 +2,7 @@
 .claude/
 .opencode/
 .superpowers/
+.od-skills/
 
 # Internal documentation (session memory framework, design docs, internal brainstorming)
 docs/HANDOFF.md

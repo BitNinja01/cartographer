@@ -7,84 +7,468 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: monospace; display: flex; height: 100vh; background: #1a1a1a; color: #eee; }
-    #map { flex: 1; }
-    #sidebar {
-      width: 300px; background: #252525; display: flex; flex-direction: column;
-      border-left: 1px solid #444; overflow: hidden;
+    @font-face {
+      font-family: 'JetBrains Mono';
+      src: url('../fonts/JetBrainsMono/JetBrainsMonoNLNerdFontMono-Regular.ttf') format('truetype');
+      font-weight: 400;
+      font-style: normal;
     }
-    #sidebar h2 { padding: 12px 16px; font-size: 14px; background: #333; border-bottom: 1px solid #444; }
-    #feature-list { flex: 1; overflow-y: auto; padding: 8px; }
-    .feature-item {
-      padding: 8px 10px; margin-bottom: 4px; border-radius: 4px;
-      background: #333; cursor: pointer; font-size: 12px; border: 1px solid #444;
+    @font-face {
+      font-family: 'JetBrains Mono';
+      src: url('../fonts/JetBrainsMono/JetBrainsMonoNLNerdFontMono-Medium.ttf') format('truetype');
+      font-weight: 500;
+      font-style: normal;
     }
-    .feature-item:hover { background: #3a3a3a; }
-    .feature-item.assigned { opacity: 0.6; border-color: #4CAF50; background: #2a3a2a; }
-    .feature-item .type-badge {
-      display: inline-block; padding: 1px 6px; border-radius: 3px;
-      font-size: 10px; margin-right: 6px; color: white;
+    @font-face {
+      font-family: 'JetBrains Mono';
+      src: url('../fonts/JetBrainsMono/JetBrainsMonoNLNerdFontMono-SemiBold.ttf') format('truetype');
+      font-weight: 600;
+      font-style: normal;
     }
-    .type-fairway { background: #4CAF50; }
-    .type-green { background: #00796B; }
-    .type-bunker { background: #8D6E63; }
-    .type-water { background: #1565C0; }
-    .type-rough { background: #228B22; }
-    .type-tee { background: #555; }
-    .type-unclassified { background: #888; }
-    .type-path { background: #FF8F00; }
-    #controls { padding: 12px; border-top: 1px solid #444; display: flex; flex-direction: column; gap: 8px; }
-    button {
-      padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer;
-      font-family: monospace; font-size: 12px;
+    @font-face {
+      font-family: 'JetBrains Mono';
+      src: url('../fonts/JetBrainsMono/JetBrainsMonoNLNerdFontMono-Bold.ttf') format('truetype');
+      font-weight: 700;
+      font-style: normal;
     }
-    #btn-save { background: #4CAF50; color: white; }
-    #btn-save:hover { background: #388E3C; }
-    #btn-scale { background: #1565C0; color: white; }
-    #btn-scale:hover { background: #0D47A1; }
-    #scale-info { font-size: 11px; color: #aaa; }
 
-    #type-filters { padding: 8px 16px; border-bottom: 1px solid #444; }
-    #type-filters label { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; font-size: 11px; cursor: pointer; }
-    #type-filters input[type=checkbox] { accent-color: #4CAF50; }
-    .feature-item.hidden { display: none; }
-    #hole-selector { padding: 8px 16px; border-bottom: 1px solid #444; display: flex; align-items: center; gap: 8px; }
-    #hole-label { font-size: 11px; color: #aaa; }
-    #current-hole { font-size: 18px; font-weight: bold; color: #4CAF50; min-width: 24px; text-align: center; }
-    #btn-prev-hole, #btn-next-hole { background: #333; color: #aaa; border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 16px; padding: 2px 8px; }
-    #btn-prev-hole:hover, #btn-next-hole:hover { background: #444; color: white; }
+    :root {
+      --bg:      oklch(14% 0.010 240);
+      --surface: oklch(18% 0.012 240);
+      --surface-elevated: oklch(22% 0.014 240);
+      --fg:      oklch(94% 0.006 240);
+      --muted:   oklch(64% 0.010 240);
+      --border:  oklch(32% 0.015 240);
+      --accent:  oklch(68% 0.16 145);
+      --accent-hover: oklch(72% 0.18 145);
+      --danger: oklch(64% 0.20 25);
+
+      --font-body: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+      --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: var(--font-body);
+      display: flex;
+      height: 100vh;
+      background: var(--bg);
+      color: var(--fg);
+      font-variant-numeric: tabular-nums;
+    }
+
+    #map {
+      flex: 1;
+      background: var(--surface);
+    }
+
+    #sidebar {
+      width: 360px;
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    header {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    h1 {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--fg);
+      font-family: var(--font-body);
+    }
+
+    .section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      color: var(--muted);
+      padding: 16px 20px 10px;
+      font-family: var(--font-mono);
+    }
+
+    #hole-selector {
+      padding: 12px 20px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #hole-label {
+      font-size: 13px;
+      color: var(--muted);
+      flex: 1;
+      font-family: var(--font-mono);
+    }
+
+    .hole-nav {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #btn-prev-hole, #btn-next-hole {
+      background: var(--surface-elevated);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 6px 10px;
+      transition: all 0.15s;
+      font-family: var(--font-mono);
+    }
+
+    #btn-prev-hole:hover, #btn-next-hole:hover {
+      background: var(--border);
+      color: var(--fg);
+      border-color: var(--muted);
+    }
+
+    #current-hole {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--accent);
+      min-width: 36px;
+      text-align: center;
+      font-family: var(--font-mono);
+    }
+
+    .invalid { color: var(--muted) !important; }
+
+    #type-filters {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    #type-filters input[type=checkbox] {
+      display: none;
+    }
+
+    #type-filters label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: 6px;
+      transition: all 0.15s;
+      font-family: var(--font-mono);
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      opacity: 0.4;
+    }
+
+    #type-filters label:hover {
+      opacity: 0.7;
+      border-color: var(--muted);
+    }
+
+    #type-filters input[type=checkbox]:checked + label,
+    #type-filters label:has(input:checked) {
+      opacity: 1;
+      background: var(--accent);
+      color: var(--bg);
+      border-color: var(--accent);
+    }
+
+    #type-filters input[type=checkbox]:checked + label:hover,
+    #type-filters label:has(input:checked):hover {
+      opacity: 1;
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+
+    .type-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      color: white;
+      font-family: var(--font-mono);
+      text-transform: lowercase;
+    }
+
+    .type-fairway { background: oklch(58% 0.14 145); }
+    .type-green { background: oklch(48% 0.12 165); }
+    .type-bunker { background: oklch(54% 0.08 60); }
+    .type-water { background: oklch(58% 0.16 240); }
+    .type-rough { background: oklch(52% 0.12 140); }
+    .type-tee { background: oklch(48% 0.02 240); }
+    .type-unclassified { background: oklch(54% 0.04 240); }
+    .type-path { background: oklch(64% 0.14 80); }
+
+    #feature-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .feature-item {
+      padding: 12px;
+      margin-bottom: 2px;
+      border-radius: 6px;
+      background: var(--surface-elevated);
+      cursor: pointer;
+      font-size: 13px;
+      border: 1px solid transparent;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+    }
+
+    .feature-item:hover {
+      background: var(--border);
+      border-color: var(--muted);
+    }
+
+    .feature-item.assigned {
+      opacity: 0.7;
+      background: oklch(18% 0.06 145);
+      border-color: oklch(32% 0.10 145);
+    }
+
+    .feature-item.assigned:hover {
+      opacity: 0.85;
+      border-color: var(--accent);
+    }
+
+    .feature-item.course-wide {
+      opacity: 0.6;
+      cursor: default;
+      border-style: dashed;
+    }
+
+    .feature-item.course-wide:hover {
+      background: var(--surface-elevated);
+      border-color: transparent;
+    }
+
+    .hole-badge {
+      display: inline-block;
+      padding: 3px 9px;
+      background: var(--accent);
+      color: var(--bg);
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+
+    .course-wide-badge {
+      display: inline-block;
+      padding: 3px 9px;
+      background: oklch(54% 0.12 240);
+      color: white;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .feature-meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: auto;
+    }
+
+    #controls {
+      padding: 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: var(--surface);
+    }
+
+    button {
+      padding: 12px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.15s;
+      letter-spacing: -0.01em;
+    }
+
+    #btn-save {
+      background: var(--accent);
+      color: var(--bg);
+    }
+
+    #btn-save:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    #btn-scale {
+      background: var(--surface-elevated);
+      color: var(--fg);
+      border: 1px solid var(--border);
+    }
+
+    #btn-scale:hover {
+      background: var(--border);
+      border-color: var(--muted);
+    }
+
+    #scale-info {
+      font-size: 12px;
+      color: var(--muted);
+      padding: 8px 12px;
+      background: var(--surface-elevated);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-family: var(--font-mono);
+    }
+
+    #scale-info.set {
+      color: var(--accent);
+      border-color: oklch(32% 0.10 145);
+      background: oklch(16% 0.06 145);
+    }
+
+    #scale-input-area {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px;
+      background: var(--surface-elevated);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    #distance-input {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      font-family: var(--font-mono);
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.15s;
+    }
+
+    #distance-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .button-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    .button-group button {
+      flex: 1;
+    }
+
+    #btn-confirm-scale {
+      background: var(--accent);
+      color: var(--bg);
+    }
+
+    #btn-confirm-scale:hover {
+      background: var(--accent-hover);
+    }
+
+    #btn-cancel-scale-2 {
+      background: var(--surface);
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    #btn-cancel-scale-2:hover {
+      background: var(--border);
+      color: var(--fg);
+    }
+
+    .hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="sidebar">
-  <h2 id="course-title">Cartographer</h2>
-  <div id="type-filters">
-    <label><input type="checkbox" checked onchange="toggleFilter('fairway', this.checked)"> <span class="type-badge type-fairway">fairway</span></label>
-    <label><input type="checkbox" checked onchange="toggleFilter('green', this.checked)"> <span class="type-badge type-green">green</span></label>
-    <label><input type="checkbox" checked onchange="toggleFilter('bunker', this.checked)"> <span class="type-badge type-bunker">bunker</span></label>
-    <label><input type="checkbox" checked onchange="toggleFilter('water', this.checked)"> <span class="type-badge type-water">water</span></label>
-    <label><input type="checkbox" checked onchange="toggleFilter('path', this.checked)"> <span class="type-badge type-path">path</span></label>
-    <label><input type="checkbox" checked onchange="toggleFilter('tee', this.checked)"> <span class="type-badge type-tee">tee</span></label>
-    <label><input type="checkbox" checked onchange="toggleFilter('unclassified', this.checked)"> <span class="type-badge type-unclassified">other</span></label>
-  </div>
+  <header>
+    <h1 id="course-title"></h1>
+  </header>
+
   <div id="hole-selector">
-    <span id="hole-label">Tagging hole:</span>
-    <button id="btn-prev-hole" title="Previous hole">◀</button>
-    <span id="current-hole">1</span>
-    <button id="btn-next-hole" title="Next hole">▶</button>
+    <span id="hole-label">Current hole</span>
+    <div class="hole-nav">
+      <button id="btn-prev-hole" title="Previous hole">◀</button>
+      <span id="current-hole">1</span>
+      <button id="btn-next-hole" title="Next hole">▶</button>
+    </div>
   </div>
+
+  <div class="section-label">Filter by type</div>
+  <div id="type-filters">
+    <label>
+      <input type="checkbox" checked onchange="toggleFilter('fairway', this.checked)">
+      fairway
+    </label>
+    <label>
+      <input type="checkbox" checked onchange="toggleFilter('green', this.checked)">
+      green
+    </label>
+    <label>
+      <input type="checkbox" checked onchange="toggleFilter('bunker', this.checked)">
+      bunker
+    </label>
+    <label>
+      <input type="checkbox" checked onchange="toggleFilter('water', this.checked)">
+      water
+    </label>
+    <label>
+      <input type="checkbox" checked onchange="toggleFilter('path', this.checked)">
+      path
+    </label>
+    <label>
+      <input type="checkbox" checked onchange="toggleFilter('tee', this.checked)">
+      tee
+    </label>
+    <label>
+      <input type="checkbox" checked onchange="toggleFilter('unclassified', this.checked)">
+      other
+    </label>
+  </div>
+
+  <div class="section-label">Features</div>
   <div id="feature-list"></div>
+
   <div id="controls">
     <div id="scale-info">Scale: not set</div>
     <button id="btn-scale">Set Scale (2-point)</button>
-    <div id="scale-input-area" style="display:none;">
-      <input id="distance-input" type="number" min="1" max="600" placeholder="Distance in yards"
-             style="width:100%;padding:6px;background:#333;border:1px solid #555;color:white;font-family:monospace;border-radius:3px;font-size:14px;margin-top:8px;" />
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <button id="btn-confirm-scale" style="flex:1;background:#1565C0;color:white;">Confirm</button>
-        <button id="btn-cancel-scale-2" style="flex:1;background:#555;color:white;">Cancel</button>
+    <div id="scale-input-area" class="hidden">
+      <input id="distance-input" type="number" min="1" max="600" placeholder="Distance in yards" />
+      <div class="button-group">
+        <button id="btn-confirm-scale">Confirm</button>
+        <button id="btn-cancel-scale-2">Cancel</button>
       </div>
     </div>
     <button id="btn-save">Save &amp; Close</button>
@@ -101,6 +485,8 @@
     fairway: '#4CAF50', green: '#00796B', bunker: '#8D6E63',
     water: '#1565C0', rough: '#228B22', tee: '#555', unclassified: '#888', path: '#FF8F00'
   };
+
+  const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
 
   let featureAssignments = {};
   let scaleData = null;
@@ -128,7 +514,7 @@
     currentHole = hole;
     const el = document.getElementById('current-hole');
     el.textContent = hole >= 1 && hole <= 18 ? hole : '—';
-    el.style.color = (hole >= 1 && hole <= 18) ? '#4CAF50' : '#888';
+    el.classList.toggle('invalid', hole < 1 || hole > 18);
   }
 
   document.getElementById('btn-prev-hole').onclick = () => {
@@ -218,15 +604,21 @@
       if (!activeFilters.has(type)) return;
       const hole = featureAssignments[id];
       const div = document.createElement('div');
-      div.className = 'feature-item' + (hole ? ' assigned' : '');
-      const holeBadge = hole ? `<span style="display:inline-block;padding:1px 8px;background:#4CAF50;color:white;border-radius:3px;font-size:10px;margin-right:6px;">H${hole}</span>` : '';
-      const wideBadge = (type === 'water' || type === 'path') ? `<span style="display:inline-block;padding:1px 8px;background:#1565C0;color:white;border-radius:3px;font-size:10px;margin-right:6px;">CW</span>` : '';
-      div.innerHTML = `${holeBadge}${wideBadge}<span class="type-badge type-${type}">${type}</span> <small style="color:#888">#${id}</small>`;
+      const isCourseWide = (type === 'water' || type === 'path');
+      
+      div.className = 'feature-item' + (hole ? ' assigned' : '') + (isCourseWide ? ' course-wide' : '');
+      
+      const holeBadge = hole ? `<span class="hole-badge">H${hole}</span>` : '';
+      const wideBadge = isCourseWide ? `<span class="course-wide-badge">CW</span>` : '';
+      
+      div.innerHTML = `
+        ${holeBadge}
+        ${wideBadge}
+        <span class="type-badge type-${type}">${type}</span>
+        <span class="feature-meta">#${id}</span>
+      `;
 
-      if (type === 'water' || type === 'path') {
-        div.style.opacity = '0.7';
-        div.style.cursor = 'default';
-      } else {
+      if (!isCourseWide) {
         div.onclick = () => {
           if (hole) {
             delete featureAssignments[id];
@@ -257,28 +649,28 @@
       scaleMarkers = [];
       scalePoints = [];
       document.getElementById('btn-scale').textContent = 'Set Scale (2-point)';
-      document.getElementById('scale-input-area').style.display = 'none';
+      document.getElementById('scale-input-area').classList.add('hidden');
       return;
     }
     scaleMode = true;
     scalePoints = [];
     scaleMarkers.forEach(m => map.removeLayer(m));
     scaleMarkers = [];
-    document.getElementById('btn-scale').textContent = 'Choosing point 1...';
-    document.getElementById('scale-input-area').style.display = 'none';
+      document.getElementById('btn-scale').textContent = 'Choosing point 1...';
+      document.getElementById('scale-input-area').classList.add('hidden');
   };
 
   map.on('click', e => {
     if (!scaleMode) return;
     if (scalePoints.length >= 2) return;
     scalePoints.push([e.latlng.lat, e.latlng.lng]);
-    const marker = L.circleMarker(e.latlng, {radius: 6, color: '#1565C0', fillColor: '#1565C0', fillOpacity: 1}).addTo(map);
+    const marker = L.circleMarker(e.latlng, {radius: 6, color: accentColor, fillColor: accentColor, fillOpacity: 1}).addTo(map);
     scaleMarkers.push(marker);
     if (scalePoints.length === 1) {
       document.getElementById('btn-scale').textContent = 'Choosing point 2...';
     } else if (scalePoints.length === 2) {
       document.getElementById('btn-scale').textContent = 'Set Scale (active)';
-      document.getElementById('scale-input-area').style.display = 'block';
+      document.getElementById('scale-input-area').classList.remove('hidden');
       document.getElementById('distance-input').value = '';
       document.getElementById('distance-input').focus();
     }
@@ -302,7 +694,7 @@
       scaleMarkers = [];
       scalePoints = [];
       document.getElementById('btn-scale').textContent = 'Set Scale (2-point)';
-      document.getElementById('scale-input-area').style.display = 'none';
+      document.getElementById('scale-input-area').classList.add('hidden');
       updateScaleInfo();
     }
   };
@@ -313,17 +705,17 @@
     scaleMarkers = [];
     scalePoints = [];
     document.getElementById('btn-scale').textContent = 'Set Scale (2-point)';
-    document.getElementById('scale-input-area').style.display = 'none';
+    document.getElementById('scale-input-area').classList.add('hidden');
   };
 
   function updateScaleInfo() {
     const el = document.getElementById('scale-info');
     if (scaleData) {
       el.textContent = `Scale: ${scaleData.pixels_per_yard.toFixed(2)} px/yd`;
-      el.style.color = '#4CAF50';
+      el.classList.add('set');
     } else {
       el.textContent = 'Scale: not set';
-      el.style.color = '#aaa';
+      el.classList.remove('set');
     }
   }
 
@@ -381,7 +773,7 @@
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({scale: scaleData, holes}),
       }).then(() => {
-        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:monospace;font-size:18px;color:#4CAF50;">Saved! You can close this tab.</div>';
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:var(--font-body);font-size:18px;color:var(--accent);">Saved! You can close this tab.</div>';
       });
     });
   };

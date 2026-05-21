@@ -1,12 +1,17 @@
 # Cartographer
 
-[![Release](https://img.shields.io/github/v/release/BitNinja01/cartographer.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/cartographer/releases)
-[![Downloads](https://img.shields.io/github/downloads/BitNinja01/cartographer/total.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/cartographer/releases)
-[![CI](https://img.shields.io/github/actions/workflow/status/BitNinja01/cartographer/ci.yml?branch=dev&style=for-the-badge&label=CI)](https://github.com/BitNinja01/cartographer/actions)
-[![Platform](https://img.shields.io/badge/Platforms-Linux%20|%20macOS%20|%20Windows-white.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/cartographer)
+[![Release](https://img.shields.io/github/v/release/BitNinja01/pinsheet-cartographer.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/pinsheet-cartographer/releases)
+[![Downloads](https://img.shields.io/github/downloads/BitNinja01/pinsheet-cartographer/total.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/pinsheet-cartographer/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/BitNinja01/pinsheet-cartographer/ci.yml?branch=dev&style=for-the-badge&label=CI)](https://github.com/BitNinja01/pinsheet-cartographer/actions)
+[![Platform](https://img.shields.io/badge/Platforms-Linux%20|%20macOS%20|%20Windows-white.svg?style=for-the-badge&color=green)](https://github.com/BitNinja01/pinsheet-cartographer)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg?style=for-the-badge&color=green)](https://www.python.org/downloads/)
 
-A PinSheet plugin that generates yardage book PDFs from OpenStreetMap course geometry.
+<p align="center">
+  <img src="docs/img/logo_light.svg#gh-light-mode-only" alt="Cartographer Logo" width="500">
+  <img src="docs/img/logo_dark.svg#gh-dark-mode-only" alt="Cartographer Logo" width="500">
+</p>
+
+A plugin for [PinSheet](https://github.com/BitNinja01/pinsheet), the golf stats and round tracking app. Generates yardage book PDFs from OpenStreetMap course geometry.
 
 - **Hole View** — per-hole layout diagrams in-app, showing fairways, greens, bunkers, water, and yardage arcs
 - **Course Gallery** — browse all 18 holes with j/k navigation
@@ -20,7 +25,108 @@ pip install -r requirements.txt
 python -m cartographer.tagger "Course Name"   # tag a course
 ```
 
-Requires the PinSheet plugin system (v1.9.7+).
+Requires PinSheet v1.9.7+.
+
+---
+
+## Installation
+
+### Prerequisites
+
+- **Python 3.11+**
+- **PinSheet v1.9.7+** — the parent app must be installed and its plugin system available
+- **System libraries** — `cairosvg` needs libcairo2:
+
+| Platform | Command |
+|----------|---------|
+| Ubuntu/Debian | `sudo apt install libcairo2-dev` |
+| macOS (Homebrew) | `brew install cairo` |
+| Windows | Bundled with `cairosvg` wheel; no extra steps |
+
+### Option 1: Release zip (recommended)
+
+Download the latest release from the [releases page](https://github.com/BitNinja01/pinsheet-cartographer/releases) and extract it into PinSheet's `plugins/` directory:
+
+```bash
+# From your PinSheet install directory
+mkdir -p plugins
+cd plugins
+wget https://github.com/BitNinja01/pinsheet-cartographer/releases/latest/download/cartographer_1.0.1.zip
+unzip cartographer_1.0.1.zip -d cartographer
+cd cartographer
+pip install -r requirements.txt
+```
+
+### Option 2: Git clone
+
+```bash
+# From your PinSheet install directory
+mkdir -p plugins
+cd plugins
+git clone https://github.com/BitNinja01/pinsheet-cartographer.git
+cd cartographer
+pip install -r requirements.txt
+```
+
+### Verify installation
+
+Launch PinSheet — if installed correctly, you'll see Cartographer screens listed under plugin bindings. Check for:
+- **Hole View** (`h` on course/round detail screens)
+- **Course Gallery** (`h` to browse all 18 holes with `j`/`k` navigation)
+- **Geometry Setup** (`g` on course detail screens)
+- **Export PDF** (`p` on course detail screens)
+
+---
+
+## Quick Start
+
+### 1. Get course geometry
+
+**Option A — via PinSheet TUI (easiest):**
+1. Add your course in PinSheet (if not already added)
+2. Open the course detail screen, press `g` for Geometry Setup
+3. Enter your `.osm` file path (see below) or enter the course name to auto-fetch from OpenStreetMap
+4. Click **Launch Tagger** to open the browser-based tagging UI
+
+**Option B — via Overpass API (standalone):**
+```bash
+python -m cartographer.tagger "Bellevue Golf Course"
+```
+This fetches the course from OpenStreetMap automatically — no `.osm` file needed.
+
+**Option C — manual .osm file:**
+1. Go to [openstreetmap.org](https://www.openstreetmap.org) and search for your golf course
+2. Click **Export** → download the `.osm` file
+3. Run: `python -m cartographer.tagger "Course Name" /path/to/course.osm`
+
+### 2. Tag course features
+
+The tagger UI opens in your browser. For each hole:
+1. Select the hole number (◀/▶ arrows)
+2. Click features on the map to assign them (fairways, greens, bunkers, water)
+3. Use the **Set Scale** tool to calibrate — click two points with a known distance
+4. Click **Save** when done
+
+Water hazards and cart paths are auto-distributed to all holes. Use the type filter checkboxes to toggle feature visibility.
+
+### 3. Generate a yardage book
+
+**In PinSheet:** Press `p` on the course detail screen to open the PDF Export screen, configure the bottom slot content (green grid / stats / notes), and click **Export**.
+
+**Standalone:**
+```bash
+PYTHONPATH=. python -m cartographer.pdf "Course Name" --output ~/yardage_books
+```
+
+Output lands in `data/plugins/cartographer/yardage_books/{course_name}/`:
+```
+├── sheets/      # Individual 4.25"×14" narrow PDFs
+└── booklets/    # 5 saddle-stitch booklet PDFs (8.5"×14")
+```
+
+### 4. Print and assemble
+
+Print the 5 booklets double-sided on 8.5"×14" (legal) paper, fold each in half, and saddle-stitch to create a complete yardage book.
 
 ---
 
