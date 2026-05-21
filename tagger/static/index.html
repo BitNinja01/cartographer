@@ -611,12 +611,10 @@
       
       div.className = 'feature-item' + (hole ? ' assigned' : '') + (isCourseWide ? ' course-wide' : '');
       
-      const holeBadge = hole ? `<span class="hole-badge">H${hole}</span>` : '';
-      const wideBadge = isCourseWide ? `<span class="course-wide-badge">CW</span>` : '';
+      const holeBadge = (!isCourseWide && hole) ? `<span class="hole-badge">H${hole}</span>` : '';
       
       div.innerHTML = `
         ${holeBadge}
-        ${wideBadge}
         <span class="type-badge type-${type}">${type}</span>
         <span class="feature-meta">#${id}</span>
       `;
