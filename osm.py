@@ -48,7 +48,7 @@ def _classify_tags(tags: dict[str, str]) -> str | None:
     if tags.get("natural") == "water":
         return "water"
     if tags.get("waterway") in ("stream", "river", "ditch", "canal", "drain"):
-        return "water"
+        return "waterway"
     if tags.get("water"):
         return "water"
 

@@ -45,19 +45,35 @@ class TestClassifyCartpathBypass:
 
 
 class TestClassifyWaterTags:
-    """Multiple OSM tagging schemes that map to 'water'."""
+    """Open waterways (linestring) vs closed water bodies (polygon)."""
 
-    def test_classify_natural_water(self):
+    def test_classify_waterway_stream_is_waterway(self):
+        """Open waterway=stream must classify as 'waterway', not 'water'."""
+        assert _classify_tags({"waterway": "stream"}) == "waterway"
+
+    def test_classify_waterway_river_is_waterway(self):
+        assert _classify_tags({"waterway": "river"}) == "waterway"
+
+    def test_classify_waterway_ditch_is_waterway(self):
+        assert _classify_tags({"waterway": "ditch"}) == "waterway"
+
+    def test_classify_waterway_canal_is_waterway(self):
+        assert _classify_tags({"waterway": "canal"}) == "waterway"
+
+    def test_classify_waterway_drain_is_waterway(self):
+        assert _classify_tags({"waterway": "drain"}) == "waterway"
+
+    def test_classify_natural_water_still_water(self):
+        """Closed pond (natural=water) must remain 'water'."""
         assert _classify_tags({"natural": "water"}) == "water"
 
-    def test_classify_waterway_stream(self):
-        assert _classify_tags({"waterway": "stream"}) == "water"
-
-    def test_classify_waterway_river(self):
-        assert _classify_tags({"waterway": "river"}) == "water"
-
-    def test_classify_water_key(self):
+    def test_classify_water_key_still_water(self):
+        """Closed pond (water=pond) must remain 'water'."""
         assert _classify_tags({"water": "pond"}) == "water"
+
+    def test_classify_golf_water_hazard_still_water(self):
+        """golf=water_hazard is always a closed polygon — must remain 'water'."""
+        assert _classify_tags({"golf": "water_hazard"}) == "water"
 
 
 class TestClassifyLanduseGrass:
