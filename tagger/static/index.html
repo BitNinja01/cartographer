@@ -562,6 +562,10 @@
         }),
         onEachFeature: (feature, layer) => {
           const id = feature.properties.osm_id;
+          if (feature.properties.type === 'unclassified') {
+            // Don't render unclassified features on the map at all
+            return;
+          }
           layers[id] = layer;
           layer.on('click', e => {
             if (scaleMode) return;
