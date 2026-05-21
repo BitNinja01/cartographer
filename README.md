@@ -11,7 +11,7 @@
   <img src="docs/img/logo_dark.svg#gh-dark-mode-only" alt="Cartographer Logo" width="500">
 </p>
 
-A PinSheet plugin that generates yardage book PDFs from OpenStreetMap course geometry.
+A plugin for [PinSheet](https://github.com/BitNinja01/pinsheet), the golf stats and round tracking app. Generates yardage book PDFs from OpenStreetMap course geometry.
 
 - **Hole View** — per-hole layout diagrams in-app, showing fairways, greens, bunkers, water, and yardage arcs
 - **Course Gallery** — browse all 18 holes with j/k navigation
@@ -25,7 +25,7 @@ pip install -r requirements.txt
 python -m cartographer.tagger "Course Name"   # tag a course
 ```
 
-Requires the PinSheet plugin system (v1.9.7+).
+Requires PinSheet v1.9.7+.
 
 ---
 
