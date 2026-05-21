@@ -208,10 +208,10 @@
       text-transform: lowercase;
     }
 
-    .type-fairway { background: oklch(58% 0.22 145); }
-    .type-green { background: oklch(48% 0.20 165); }
+    .type-fairway { background: oklch(58% 0.14 145); }
+    .type-green { background: oklch(48% 0.12 165); }
     .type-bunker { background: oklch(54% 0.08 60); }
-    .type-water { background: oklch(58% 0.26 240); }
+    .type-water { background: oklch(58% 0.16 240); }
     .type-rough { background: oklch(52% 0.12 140); }
     .type-tee { background: oklch(48% 0.02 240); }
     .type-path { background: oklch(64% 0.14 80); }
@@ -473,8 +473,8 @@
   }).addTo(map);
 
   const typeColours = {
-    fairway: '#2E7D32', green: '#00695C', bunker: '#8D6E63',
-    water: '#1976D2', waterway: '#1976D2', rough: '#228B22', tee: '#555', path: '#FF8F00'
+    fairway: '#4CAF50', green: '#00796B', bunker: '#8D6E63',
+    water: '#1565C0', waterway: '#1565C0', rough: '#228B22', tee: '#555', path: '#FF8F00'
   };
 
   const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
