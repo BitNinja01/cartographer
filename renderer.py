@@ -9,7 +9,7 @@ from __future__ import annotations
 import svgwrite
 
 from cartographer.data import load_courses_geo
-from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry, chaikin_smooth
+from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry, chaikin_smooth, chaikin_smooth_open
 
 # Feature render colours — (stroke, fill)
 _COLOURS = {
@@ -17,6 +17,7 @@ _COLOURS = {
     "fairway":        ("#000000", "#ccebb0"),
     "water":          ("#000000", "#a8d1de"),
     "paths":          ("#000000", "#d4c9a8"),
+    "waterways":      ("#1565C0", "#a8d1de"),
     "bunkers":        ("#000000", "#f5e8c5"),
     "green":          ("#000000", "#87debd"),
 }
@@ -109,6 +110,14 @@ def render_hole(
     if paths:
         g = dwg.g()
         _draw_lines(dwg, g, paths, stroke=stroke_col)
+        dwg.add(g)
+
+    # Waterways are open LineStrings — draw with water colour, no fill
+    stroke_col, _ = _COLOURS["waterways"]
+    waterways = hole_geom.get("waterways", [])
+    if waterways:
+        g = dwg.g()
+        _draw_lines(dwg, g, waterways, stroke=stroke_col, stroke_width=1.5)
         dwg.add(g)
 
     # Tee box markers — same fill/stroke as rough/water
