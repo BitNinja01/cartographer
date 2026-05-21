@@ -9,7 +9,7 @@ from __future__ import annotations
 import svgwrite
 
 from cartographer.data import load_courses_geo
-from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry, chaikin_smooth, compute_pixels_per_yard_from_geometry
+from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry, chaikin_smooth, compute_pixels_per_yard_from_geometry, get_green_centroid
 
 # Feature render colours — (stroke, fill)
 _COLOURS = {
@@ -245,13 +245,8 @@ def render_hole_svg(course_name: str, hole_number: int, settings: dict | None = 
         settings = {}
     if settings.get("cartographer.yardage_arcs", True):
         distances = settings.get("cartographer.yardage_arc_distances", [100, 125, 150])
-        green_rings = fitted.get("green", [])
-        if green_rings:
-            all_pts = [pt for ring in green_rings for pt in ring]
-            if all_pts:
-                gcx = sum(p[0] for p in all_pts) / len(all_pts)
-                gcy = sum(p[1] for p in all_pts) / len(all_pts)
-                fitted["_arcs"] = [(gcx, gcy, d * ppy * scale) for d in distances]
+        gcx, gcy = get_green_centroid(fitted)
+        fitted["_arcs"] = [(gcx, gcy, d * ppy * scale) for d in distances]
 
     return render_hole(fitted, settings=settings)
 
