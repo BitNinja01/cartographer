@@ -33,6 +33,14 @@ def _classify_tags(tags: dict[str, str]) -> str | None:
     if tags.get("golf") == "cartpath":
         return "path"
 
+    # Allow waterways through before the infrastructure exclude check.
+    # OSM commonly co-tags streams/rivers with bridge=yes, tunnel=culvert, etc.
+    # for segments passing under paths — these must not be silently dropped.
+    if tags.get("waterway") in ("stream", "river", "ditch", "canal", "drain"):
+        return "waterway"
+    if tags.get("natural") == "water" or tags.get("water"):
+        return "water"
+
     # Exclude obviously non-golf infrastructure
     if any(k in _EXCLUDE_TAGS for k in tags):
         return None
@@ -43,14 +51,6 @@ def _classify_tags(tags: dict[str, str]) -> str | None:
     if golf == "hole":
         # Hole boundary markers — skip, not a renderable feature
         return None
-
-    # Water features (multiple tagging schemes)
-    if tags.get("natural") == "water":
-        return "water"
-    if tags.get("waterway") in ("stream", "river", "ditch", "canal", "drain"):
-        return "waterway"
-    if tags.get("water"):
-        return "water"
 
     # Natural features — exclude (not needed for cartography)
     natural = tags.get("natural", "")

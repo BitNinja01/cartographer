@@ -210,7 +210,6 @@
     .type-water { background: oklch(58% 0.16 240); }
     .type-rough { background: oklch(52% 0.12 140); }
     .type-tee { background: oklch(48% 0.02 240); }
-    .type-unclassified { background: oklch(54% 0.04 240); }
     .type-path { background: oklch(64% 0.14 80); }
 
     #feature-list {
@@ -445,16 +444,16 @@
       water
     </label>
     <label>
+      <input type="checkbox" checked onchange="toggleFilter('waterway', this.checked)">
+      waterway
+    </label>
+    <label>
       <input type="checkbox" checked onchange="toggleFilter('path', this.checked)">
       path
     </label>
     <label>
       <input type="checkbox" checked onchange="toggleFilter('tee', this.checked)">
       tee
-    </label>
-    <label>
-      <input type="checkbox" checked onchange="toggleFilter('unclassified', this.checked)">
-      other
     </label>
   </div>
 
@@ -483,14 +482,14 @@
 
   const typeColours = {
     fairway: '#4CAF50', green: '#00796B', bunker: '#8D6E63',
-    water: '#1565C0', waterway: '#1565C0', rough: '#228B22', tee: '#555', unclassified: '#888', path: '#FF8F00'
+    water: '#1565C0', waterway: '#1565C0', rough: '#228B22', tee: '#555', path: '#FF8F00'
   };
 
   const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
 
   let featureAssignments = {};
   let scaleData = null;
-  const activeFilters = new Set(['fairway','green','bunker','water','waterway','path','tee','unclassified']);
+  const activeFilters = new Set(['fairway','green','bunker','water','waterway','path','tee']);
   let allFeatures = [];
 
   function toggleFilter(type, visible) {
