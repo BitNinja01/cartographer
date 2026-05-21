@@ -596,19 +596,19 @@
       const hole = featureAssignments[id];
       const div = document.createElement('div');
       const isCourseWide = (type === 'water' || type === 'waterway' || type === 'path');
+      if (isCourseWide) return;  // auto-injected to all holes — don't clutter the list
+
+      div.className = 'feature-item' + (hole ? ' assigned' : '');
       
-      div.className = 'feature-item' + (hole ? ' assigned' : '') + (isCourseWide ? ' course-wide' : '');
-      
-      const holeBadge = (!isCourseWide && hole) ? `<span class="hole-badge">H${hole}</span>` : '';
-      
+      const holeBadge = hole ? `<span class="hole-badge">H${hole}</span>` : '';
+
       div.innerHTML = `
         ${holeBadge}
         <span class="type-badge type-${type}">${type}</span>
         <span class="feature-meta">#${id}</span>
       `;
 
-      if (!isCourseWide) {
-        div.onclick = () => {
+      div.onclick = () => {
           if (hole) {
             delete featureAssignments[id];
             if (layers[id]) map.addLayer(layers[id]);
@@ -624,7 +624,6 @@
             }
           }
         };
-      }
       list.appendChild(div);
     });
   }
