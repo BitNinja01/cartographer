@@ -607,7 +607,7 @@
       if (!activeFilters.has(type)) return;
       const hole = featureAssignments[id];
       const div = document.createElement('div');
-      const isCourseWide = (type === 'water' || type === 'path');
+      const isCourseWide = (type === 'water' || type === 'waterway' || type === 'path');
       
       div.className = 'feature-item' + (hole ? ' assigned' : '') + (isCourseWide ? ' course-wide' : '');
       
