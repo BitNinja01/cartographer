@@ -24,7 +24,7 @@ _GOLF_TAG_MAP = {
 
 # Tag patterns for non-golf features that should be excluded entirely
 _EXCLUDE_TAGS = {"highway", "building", "amenity", "bridge", "tunnel",
-                 "railway", "power", "man_made", "leisure"}
+                 "railway", "power", "man_made", "leisure", "boundary", "place"}
 
 
 def _classify_tags(tags: dict[str, str]) -> str | None:
