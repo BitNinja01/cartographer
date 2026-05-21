@@ -325,88 +325,7 @@
       transform: translateY(-1px);
     }
 
-    #btn-scale {
-      background: var(--surface-elevated);
-      color: var(--fg);
-      border: 1px solid var(--border);
-    }
 
-    #btn-scale:hover {
-      background: var(--border);
-      border-color: var(--muted);
-    }
-
-    #scale-info {
-      font-size: 12px;
-      color: var(--muted);
-      padding: 8px 12px;
-      background: var(--surface-elevated);
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      font-family: var(--font-mono);
-    }
-
-    #scale-info.set {
-      color: var(--accent);
-      border-color: oklch(32% 0.10 145);
-      background: oklch(16% 0.06 145);
-    }
-
-    #scale-input-area {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      padding: 12px;
-      background: var(--surface-elevated);
-      border-radius: 6px;
-      border: 1px solid var(--border);
-    }
-
-    #distance-input {
-      width: 100%;
-      padding: 10px 12px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      color: var(--fg);
-      font-family: var(--font-mono);
-      border-radius: 6px;
-      font-size: 14px;
-      transition: border-color 0.15s;
-    }
-
-    #distance-input:focus {
-      outline: none;
-      border-color: var(--accent);
-    }
-
-    .button-group {
-      display: flex;
-      gap: 8px;
-    }
-
-    .button-group button {
-      flex: 1;
-    }
-
-    #btn-confirm-scale {
-      background: var(--accent);
-      color: var(--bg);
-    }
-
-    #btn-confirm-scale:hover {
-      background: var(--accent-hover);
-    }
-
-    #btn-cancel-scale-2 {
-      background: var(--surface);
-      color: var(--muted);
-      border: 1px solid var(--border);
-    }
-
-    #btn-cancel-scale-2:hover {
-      background: var(--border);
-      color: var(--fg);
-    }
 
     .hidden {
       display: none;
@@ -453,15 +372,6 @@
   <div id="feature-list"></div>
 
   <div id="controls">
-    <div id="scale-info">Scale: not set</div>
-    <button id="btn-scale">Set Scale (2-point)</button>
-    <div id="scale-input-area" class="hidden">
-      <input id="distance-input" type="number" min="1" max="600" placeholder="Distance in yards" />
-      <div class="button-group">
-        <button id="btn-confirm-scale">Confirm</button>
-        <button id="btn-cancel-scale-2">Cancel</button>
-      </div>
-    </div>
     <button id="btn-save">Save &amp; Close</button>
   </div>
 </div>
@@ -480,7 +390,6 @@
   const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
 
   let featureAssignments = {};
-  let scaleData = null;
   const activeFilters = new Set(['fairway','green','bunker','water','waterway','path','tee']);
   let allFeatures = [];
 
@@ -517,21 +426,12 @@
 
   setCurrentHole(1);
 
-  let scaleMode = false;
-  let scalePoints = [];
-  let scaleMarkers = [];
   const layers = {};
 
   fetch('/api/features')
     .then(r => r.json())
     .then(data => {
       document.getElementById('course-title').textContent = data.course_name || 'Cartographer';
-
-      const existing = data.existing || {};
-      if (existing.scale) {
-        scaleData = existing.scale;
-        updateScaleInfo();
-      }
 
       (data.features || []).forEach(f => {
         const hole = f.properties.hole;
@@ -565,7 +465,6 @@
           }
           layers[id] = layer;
           layer.on('click', e => {
-            if (scaleMode) return;
             const ftype = feature.properties.type;
             if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;  // course-wide, not per-hole
 
@@ -592,7 +491,6 @@
       });
       allFeatures = data.features;
       renderFeatureList(allFeatures);
-      updateScaleInfo();
     });
 
   function renderFeatureList(features) {
@@ -638,90 +536,7 @@
   }
 
 
-  // Scale tool
-  document.getElementById('btn-scale').onclick = () => {
-    if (scaleMode) {
-      scaleMode = false;
-      scaleMarkers.forEach(m => map.removeLayer(m));
-      scaleMarkers = [];
-      scalePoints = [];
-      document.getElementById('btn-scale').textContent = 'Set Scale (2-point)';
-      document.getElementById('scale-input-area').classList.add('hidden');
-      return;
-    }
-    scaleMode = true;
-    scalePoints = [];
-    scaleMarkers.forEach(m => map.removeLayer(m));
-    scaleMarkers = [];
-      document.getElementById('btn-scale').textContent = 'Choosing point 1...';
-      document.getElementById('scale-input-area').classList.add('hidden');
-  };
-
-  map.on('click', e => {
-    if (!scaleMode) return;
-    if (scalePoints.length >= 2) return;
-    scalePoints.push([e.latlng.lat, e.latlng.lng]);
-    const marker = L.circleMarker(e.latlng, {radius: 6, color: accentColor, fillColor: accentColor, fillOpacity: 1}).addTo(map);
-    scaleMarkers.push(marker);
-    if (scalePoints.length === 1) {
-      document.getElementById('btn-scale').textContent = 'Choosing point 2...';
-    } else if (scalePoints.length === 2) {
-      document.getElementById('btn-scale').textContent = 'Set Scale (active)';
-      document.getElementById('scale-input-area').classList.remove('hidden');
-      document.getElementById('distance-input').value = '';
-      document.getElementById('distance-input').focus();
-    }
-  });
-
-  document.getElementById('btn-confirm-scale').onclick = () => {
-    const dist = parseFloat(document.getElementById('distance-input').value);
-    if (dist > 0 && scalePoints.length === 2) {
-      const p1 = map.latLngToContainerPoint(L.latLng(scalePoints[0][0], scalePoints[0][1]));
-      const p2 = map.latLngToContainerPoint(L.latLng(scalePoints[1][0], scalePoints[1][1]));
-      const pixelDist = Math.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2);
-      const ppy = pixelDist / dist;
-      scaleData = {
-        pixels_per_yard: ppy,
-        reference_point_a: scalePoints[0],
-        reference_point_b: scalePoints[1],
-        reference_distance_yards: dist,
-      };
-      scaleMode = false;
-      scaleMarkers.forEach(m => map.removeLayer(m));
-      scaleMarkers = [];
-      scalePoints = [];
-      document.getElementById('btn-scale').textContent = 'Set Scale (2-point)';
-      document.getElementById('scale-input-area').classList.add('hidden');
-      updateScaleInfo();
-    }
-  };
-
-  document.getElementById('btn-cancel-scale-2').onclick = () => {
-    scaleMode = false;
-    scaleMarkers.forEach(m => map.removeLayer(m));
-    scaleMarkers = [];
-    scalePoints = [];
-    document.getElementById('btn-scale').textContent = 'Set Scale (2-point)';
-    document.getElementById('scale-input-area').classList.add('hidden');
-  };
-
-  function updateScaleInfo() {
-    const el = document.getElementById('scale-info');
-    if (scaleData) {
-      el.textContent = `Scale: ${scaleData.pixels_per_yard.toFixed(2)} px/yd`;
-      el.classList.add('set');
-    } else {
-      el.textContent = 'Scale: not set';
-      el.classList.remove('set');
-    }
-  }
-
   document.getElementById('btn-save').onclick = () => {
-    if (!scaleData) {
-      alert('Please set the scale before saving (click "Set Scale").');
-      return;
-    }
-
     const holes = {};
     for (let h = 1; h <= 18; h++) {
       holes[String(h)] = {fairway:[], green:[], bunkers:[], tee_boxes:{}, water:[], waterways:[], paths:[], rough_boundary:[]};
@@ -772,7 +587,7 @@
       fetch('/api/save', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({scale: scaleData, holes}),
+        body: JSON.stringify({scale: {pixels_per_yard: 1.0}, holes}),
       }).then(() => {
         document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:var(--font-body);font-size:18px;color:var(--accent);">Saved! You can close this tab.</div>';
       });
