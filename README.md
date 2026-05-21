@@ -20,12 +20,7 @@ A plugin for [PinSheet](https://github.com/BitNinja01/pinsheet), the golf stats 
 
 ### Setup
 
-```bash
-pip install -r requirements.txt
-python -m cartographer.tagger "Course Name"   # tag a course
-```
-
-Requires PinSheet v1.9.7+.
+Requires PinSheet v2.1.0+.
 
 ---
 
@@ -34,7 +29,7 @@ Requires PinSheet v1.9.7+.
 ### Prerequisites
 
 - **Python 3.11+**
-- **PinSheet v1.9.7+** — the parent app must be installed and its plugin system available
+- **PinSheet v2.1.0+** — the parent app must be installed and its plugin system available
 - **System libraries** — `cairosvg` needs libcairo2:
 
 | Platform | Command |
@@ -42,6 +37,8 @@ Requires PinSheet v1.9.7+.
 | Ubuntu/Debian | `sudo apt install libcairo2-dev` |
 | macOS (Homebrew) | `brew install cairo` |
 | Windows | Bundled with `cairosvg` wheel; no extra steps |
+
+**PinSheet's launcher (`launch.sh`/`launch.bat`) auto-installs plugin dependencies at startup** — no manual `pip install` needed when running inside PinSheet. The steps below just place the files in the right directory.
 
 ### Option 1: Release zip (recommended)
 
@@ -53,8 +50,6 @@ mkdir -p plugins
 cd plugins
 wget https://github.com/BitNinja01/pinsheet-cartographer/releases/latest/download/cartographer_1.0.1.zip
 unzip cartographer_1.0.1.zip -d cartographer
-cd cartographer
-pip install -r requirements.txt
 ```
 
 ### Option 2: Git clone
@@ -64,9 +59,9 @@ pip install -r requirements.txt
 mkdir -p plugins
 cd plugins
 git clone https://github.com/BitNinja01/pinsheet-cartographer.git
-cd cartographer
-pip install -r requirements.txt
 ```
+
+For standalone use outside PinSheet (e.g. running the tagger or PDF generator directly), run `pip install -r requirements.txt` from the cartographer directory.
 
 ### Verify installation
 
@@ -104,10 +99,9 @@ This fetches the course from OpenStreetMap automatically — no `.osm` file need
 The tagger UI opens in your browser. For each hole:
 1. Select the hole number (◀/▶ arrows)
 2. Click features on the map to assign them (fairways, greens, bunkers, water)
-3. Use the **Set Scale** tool to calibrate — click two points with a known distance
-4. Click **Save** when done
+3. Click **Save** when done
 
-Water hazards and cart paths are auto-distributed to all holes. Use the type filter checkboxes to toggle feature visibility.
+Water hazards, waterways, and cart paths are auto-distributed to all holes.
 
 ### 3. Generate a yardage book
 
