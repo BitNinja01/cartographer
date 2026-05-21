@@ -543,7 +543,8 @@
           return {
             color: typeColours[ftype] || '#888',
             fillColor: typeColours[ftype] || '#888',
-            fillOpacity: 0.4,
+            fillOpacity: courseWide ? 0.15 : 0.4,
+            opacity: courseWide ? 0.3 : 1.0,
             weight: 2,
             interactive: !courseWide,
           };
