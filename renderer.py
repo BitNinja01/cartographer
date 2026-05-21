@@ -231,7 +231,8 @@ def render_hole_svg(course_name: str, hole_number: int, settings: dict | None = 
     if hole_key not in holes:
         return ""
 
-    ppy = compute_pixels_per_yard_from_geometry(holes, canvas_h=HOLE_CANVAS_H)
+    # Compute ppy per-hole so arc radii are self-consistent with fit_hole scaling.
+    ppy = compute_pixels_per_yard_from_geometry({hole_key: holes[hole_key]}, canvas_h=HOLE_CANVAS_H)
     effective_scale = {**scale_data, "pixels_per_yard": ppy}
     projected = project_course(holes, effective_scale)
     hole_geom = projected.get(hole_key, {})
@@ -239,7 +240,7 @@ def render_hole_svg(course_name: str, hole_number: int, settings: dict | None = 
 
     fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H)
 
-    # ppy derived from course geometry; scale is fit_hole's shrink factor.
+    # ppy derived from this hole's geometry; scale is fit_hole's shrink factor.
     if settings is None:
         settings = {}
     if settings.get("cartographer.yardage_arcs", True):

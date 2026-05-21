@@ -38,9 +38,9 @@ def _svg_to_pdf_bytes(svg_string: str) -> bytes:
 
 def _get_hole_render_data(
     hole_num: int,
+    holes_geo: dict,
     projected: dict,
     scale_data: dict,
-    ppy: float,
     settings: dict,
     course_ps: dict,
     slot1_mode: str,
@@ -62,6 +62,11 @@ def _get_hole_render_data(
     if settings.get("cartographer.yardage_arcs", True):
         distances = settings.get("cartographer.yardage_arc_distances", [100, 125, 150])
         gcx, gcy = get_green_centroid(fitted)
+        # Compute ppy per-hole from raw lat/lon geometry so arc radii are
+        # self-consistent with fit_hole's scale factor for this specific hole.
+        ppy = compute_pixels_per_yard_from_geometry(
+            {hole_key: holes_geo[hole_key]}, canvas_h=HOLE_CANVAS_H
+        ) if hole_key in holes_geo else 1.0
         fitted["_arcs"] = compute_yardage_arcs((gcx, gcy), distances, ppy, scale)
 
     hole_svg = render_hole(fitted, settings=settings)
@@ -185,9 +190,7 @@ def generate_book(
 
     holes_geo = course_geo.get("holes", {})
     scale_data = course_geo.get("scale", {})
-    ppy = compute_pixels_per_yard_from_geometry(holes_geo, canvas_h=HOLE_CANVAS_H)
-    effective_scale = {**scale_data, "pixels_per_yard": ppy}
-    projected = project_course(holes_geo, effective_scale)
+    projected = project_course(holes_geo, scale_data)
 
     safe_course = course_name.lower().replace(" ", "_").replace("'", "").replace('"', "")
 
@@ -210,11 +213,11 @@ def generate_book(
             bottom_hole = 9 if page_idx == 0 else 18 - top_hole
             fname = f"{safe_course}_{top_hole}_{bottom_hole}.pdf"
             top_hd = _get_hole_render_data(
-                top_hole, projected, scale_data, ppy, settings, course_ps,
+                top_hole, holes_geo, projected, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode,
             )
             bottom_hd = _get_hole_render_data(
-                bottom_hole, projected, scale_data, ppy, settings, course_ps,
+                bottom_hole, holes_geo, projected, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode,
             )
             if top_hd:
@@ -241,7 +244,7 @@ def generate_book(
             fname = f"{safe_course}_chart_18.pdf"
             chart_svg = compose_chart_page()
             hd = _get_hole_render_data(
-                18, projected, scale_data, ppy, settings, course_ps,
+                18, holes_geo, projected, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode,
             )
             if hd:
@@ -263,11 +266,11 @@ def generate_book(
             bottom_hole = 18 - top_hole
             fname = f"{safe_course}_{top_hole}_{bottom_hole}.pdf"
             top_hd = _get_hole_render_data(
-                top_hole, projected, scale_data, ppy, settings, course_ps,
+                top_hole, holes_geo, projected, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode,
             )
             bottom_hd = _get_hole_render_data(
-                bottom_hole, projected, scale_data, ppy, settings, course_ps,
+                bottom_hole, holes_geo, projected, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode,
             )
             if top_hd:
@@ -293,7 +296,7 @@ def generate_book(
         elif page_idx == 18:
             fname = f"{safe_course}_18_notes.pdf"
             hd = _get_hole_render_data(
-                18, projected, scale_data, ppy, settings, course_ps,
+                18, holes_geo, projected, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode,
             )
             if hd:
