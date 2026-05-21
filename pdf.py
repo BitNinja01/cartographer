@@ -318,6 +318,11 @@ def generate_book(
 
         elif page_idx == 19:
             fname = f"{safe_course}_cover.pdf"
+            overview_ppy = compute_pixels_per_yard_from_geometry(
+                holes_geo, canvas_h=HOLE_CANVAS_H
+            )
+            overview_scale = {**scale_data, "pixels_per_yard": overview_ppy}
+            projected = project_course(holes_geo, overview_scale)
             overview_svg = render_course_overview(
                 projected,
                 PRINTABLE_W,
@@ -342,11 +347,11 @@ def generate_book(
     # Combine into 5 saddle-stitch booklets, each with two 8.5"x14" pages
     # Each page has two narrow PDFs merged side-by-side
     booklet_pages = [
-        ([0, 19], [1, 18]),
-        ([2, 17], [3, 16]),
-        ([4, 15], [5, 14]),
-        ([6, 13], [7, 12]),
-        ([8, 11], [9, 10]),
+        ([8, 9], [18, 19]),   # 1/chart + 18/cover
+        ([6, 7], [16, 17]),   # 3/2 + 16/17
+        ([4, 5], [14, 15]),   # 5/4 + 14/15
+        ([2, 3], [12, 13]),   # 7/6 + 12/13
+        ([0, 1], [10, 11]),   # 9/8 + 10/11
     ]
 
     for booklet_idx, (left_pair, right_pair) in enumerate(booklet_pages, start=1):
