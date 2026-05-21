@@ -163,7 +163,11 @@ def parse_osm_file(path: Path) -> list[dict]:
             continue
         node_ids = way_node_refs[osm_id]
         ring = _nodes_to_ring(node_ids, node_coords)
-        min_nodes = 2 if feature_type == "path" else 3
+        # Closed waterway ways (first node == last node) represent area features
+        # (canal basins, river areas) — treat as filled polygons, not linestrings
+        if feature_type == "waterway" and len(ring) >= 3 and ring[0] == ring[-1]:
+            feature_type = "water"
+        min_nodes = 2 if feature_type in ("path", "waterway") else 3
         if len(ring) >= min_nodes:
             features.append({
                 "osm_id": osm_id,

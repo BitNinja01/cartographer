@@ -9,7 +9,7 @@ from __future__ import annotations
 import svgwrite
 
 from cartographer.data import load_courses_geo
-from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry, chaikin_smooth, chaikin_smooth_open
+from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry, chaikin_smooth
 
 # Feature render colours — (stroke, fill)
 _COLOURS = {
