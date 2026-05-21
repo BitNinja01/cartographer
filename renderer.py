@@ -9,7 +9,7 @@ from __future__ import annotations
 import svgwrite
 
 from cartographer.data import load_courses_geo
-from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry, chaikin_smooth
+from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry, chaikin_smooth, compute_pixels_per_yard_from_geometry
 
 # Feature render colours — (stroke, fill)
 _COLOURS = {
@@ -231,15 +231,15 @@ def render_hole_svg(course_name: str, hole_number: int, settings: dict | None = 
     if hole_key not in holes:
         return ""
 
-    projected = project_course(holes, scale_data)
+    ppy = compute_pixels_per_yard_from_geometry(holes, canvas_h=HOLE_CANVAS_H)
+    effective_scale = {**scale_data, "pixels_per_yard": ppy}
+    projected = project_course(holes, effective_scale)
     hole_geom = projected.get(hole_key, {})
     hole_geom = smooth_hole_geometry(hole_geom)
 
     fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H)
 
-    # Attach arc data to fitted geom using pixels_per_yard from scale_data.
-    # ppy is in raw projected-pixel space; scale is fit_hole's shrink factor.
-    ppy = float(scale_data.get("pixels_per_yard", 1.0))
+    # ppy derived from course geometry; scale is fit_hole's shrink factor.
     if settings is None:
         settings = {}
     if settings.get("cartographer.yardage_arcs", True):
