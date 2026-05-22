@@ -22,60 +22,34 @@ _GOLF_TAG_MAP = {
     "cartpath": "path",
 }
 
-# Tag patterns for non-golf features that should be excluded entirely
-_EXCLUDE_TAGS = {"highway", "building", "amenity", "bridge", "tunnel",
-                 "railway", "power", "man_made", "leisure", "boundary", "place"}
-
-
 def _classify_tags(tags: dict[str, str]) -> str | None:
-    """Return the internal feature type, or None to exclude the feature."""
-    # Allow cart paths through despite having excluded tags like highway=path
+    """Return the internal feature type, or None to exclude the feature.
+
+    Whitelist approach: only known golf/water/path tag combos are kept.
+    Everything else is silently dropped — no blocklist to maintain.
+    """
+    # Cart paths can co-tag with highway=path — catch first
     if tags.get("golf") == "cartpath":
         return "path"
-
-    # Allow waterways through before the infrastructure exclude check.
-    # OSM commonly co-tags streams/rivers with bridge=yes, tunnel=culvert, etc.
-    # for segments passing under paths — these must not be silently dropped.
-    if tags.get("waterway") in ("stream", "river", "ditch", "canal", "drain"):
-        return "waterway"
-    if tags.get("natural") == "water" or tags.get("water"):
-        return "water"
-
-    # Exclude obviously non-golf infrastructure
-    if any(k in _EXCLUDE_TAGS for k in tags):
-        return None
 
     golf = tags.get("golf", "")
     if golf in _GOLF_TAG_MAP:
         return _GOLF_TAG_MAP[golf]
     if golf == "hole":
-        # Hole boundary markers — skip, not a renderable feature
         return None
 
-    # Natural features — exclude (not needed for cartography)
-    natural = tags.get("natural", "")
-    if natural in ("wood", "scrub", "grassland", "tree_row", "tree"):
-        return None
-    landuse = tags.get("landuse", "")
-    if landuse == "forest":
-        return None
-    if landuse == "grass":
-        # Bare grass with no golf tag — treat as fairway
-        if golf:
-            return None
+    # Water features — check before general exclusion since they may
+    # co-tag with bridge=yes, tunnel=culvert for under-path segments.
+    if tags.get("waterway") in ("stream", "river", "ditch", "canal", "drain"):
+        return "waterway"
+    if tags.get("natural") == "water" or tags.get("water"):
+        return "water"
+
+    # Bare grass with no golf tag — treat as fairway
+    if tags.get("landuse") == "grass" and not golf:
         return "fairway"
-    if landuse:  # Any other landuse (residential, recreation_ground, etc.) — exclude
-        return None
 
-    # Course infrastructure
-    if tags.get("barrier") in ("fence", "wall", "hedge"):
-        return None
-
-    # No relevant tags — exclude
-    if not tags:
-        return None
-
-    return "unclassified"
+    return None
 
 
 def _nodes_to_ring(node_ids: list[str], node_coords: dict[str, tuple[float, float]]) -> list[list[float]]:

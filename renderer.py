@@ -236,7 +236,7 @@ def render_hole_svg(course_name: str, hole_number: int, settings: dict | None = 
     effective_scale = {**scale_data, "pixels_per_yard": ppy}
     projected = project_course(holes, effective_scale)
     hole_geom = projected.get(hole_key, {})
-    hole_geom = smooth_hole_geometry(hole_geom)
+    hole_geom = smooth_hole_geometry(hole_geom, pixels_per_yard=ppy)
 
     fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H)
 

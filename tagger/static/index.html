@@ -377,7 +377,7 @@
 </div>
 
 <script>
-  const map = L.map('map').setView([0, 0], 2);
+  const map = L.map('map');
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 20, attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
@@ -440,6 +440,13 @@
         }
       });
 
+      if (data.bounds) {
+        map.fitBounds([
+          [data.bounds.minlat, data.bounds.minlon],
+          [data.bounds.maxlat, data.bounds.maxlon],
+        ], {padding: [30, 30]});
+      }
+
       const geojsonLayer = L.geoJSON(data, {
         style: feature => {
           const ftype = feature.properties.type;
@@ -483,7 +490,6 @@
         }
       }).addTo(map);
 
-      map.fitBounds(geojsonLayer.getBounds().pad(0.1));
       Object.entries(featureAssignments).forEach(([id]) => {
         if (layers[id]) {
           map.removeLayer(layers[id]);

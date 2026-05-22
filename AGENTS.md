@@ -12,9 +12,13 @@ A PinSheet plugin that generates yardage book PDFs from OpenStreetMap course geo
 - **Always read `docs/RUNBOOK.md`** before running commands — it covers install, test, tagger, and PDF generation workflows
 - **Always read `docs/DECISIONS.md`** before making architectural changes — it records the *why* behind projection choices, OSM parsing strategy, PDF layout, and font handling
 - Reference the parent PinSheet repo (`/mnt/Claude/repositories/pinsheet/`) for plugin API conventions (`source/plugin.py`, `source/plugin_loader.py`)
+- Backlog items are priority-tagged `[P0]` / `[P1]` / `[P2]` in `docs/BACKLOG.md`. Ideas are tagged `[I*]` in `docs/IDEAS.md`.
 
 ### Claude memory files (ignore)
 This project may contain Claude Code artifacts (`CLAUDE.md`, `.claude/`). These are managed by a different tool. OpenCode must never read, write, or modify them — they do not exist as far as this agent is concerned.
+
+### Session memory files (gitignored)
+The session memory files (`docs/HANDOFF.md`, `docs/SESSION_LOG.md`, `docs/DECISIONS.md`, `docs/BACKLOG.md`) are excluded via `.gitignore`. They remain local and are not committed. Edits to these files affect local state only.
 
 ### Nested repo isolation
 **CRITICAL:** Cartographer is a standalone git repository nested inside the parent PinSheet repo at `plugins/cartographer/`. The parent's `.gitignore` excludes `plugins/`. NEVER commit cartographer files from the parent repo — they must only be committed within this nested repository. Conversely, never modify parent repo files from within this repository.

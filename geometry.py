@@ -334,6 +334,71 @@ def compute_yardage_arcs(
     ]
 
 
+def _angle_between(v1: tuple[float, float], v2: tuple[float, float]) -> float:
+    """Return the turn angle in degrees between two edge vectors (0-180)."""
+    dot = v1[0] * v2[0] + v1[1] * v2[1]
+    mag = math.sqrt(v1[0] ** 2 + v1[1] ** 2) * math.sqrt(v2[0] ** 2 + v2[1] ** 2)
+    if mag == 0:
+        return 0.0
+    cos_a = max(-1.0, min(1.0, dot / mag))
+    return math.degrees(math.acos(cos_a))
+
+
+def _dedupe_adjacent(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Remove consecutive duplicate points from a ring."""
+    if not points:
+        return points
+    result = [points[0]]
+    for p in points[1:]:
+        if p != result[-1]:
+            result.append(p)
+    if len(result) >= 2 and result[0] == result[-1]:
+        result.pop()
+    return result if len(result) >= 3 else points
+
+
+def opening_ring(
+    ring: list[tuple[float, float]],
+    buffer_yards: float,
+    pixels_per_yard: float,
+) -> list[tuple[float, float]]:
+    """Remove narrow protrusions from a polygon ring via morphological opening.
+
+    Erodes the polygon by buffer_yards then dilates back by the same amount.
+    Narrow appendages narrower than 2× buffer_yards are sheared off, while
+    the main body is restored. Falls back to the original ring if the
+    operation would destroy the polygon.
+
+    Operates in yard-space (coords / ppy) so the buffer distance is
+    meaningful regardless of projection scale.
+    """
+    if len(ring) < 4 or pixels_per_yard <= 0:
+        return ring
+
+    try:
+        yard_ring = [(x / pixels_per_yard, y / pixels_per_yard) for x, y in ring]
+        poly = Polygon(yard_ring)
+        if not poly.is_valid or poly.area == 0:
+            return ring
+
+        eroded = poly.buffer(-buffer_yards, join_style=2)
+        if eroded.is_empty:
+            return ring
+
+        opened = eroded.buffer(buffer_yards, join_style=2)
+        if opened.is_empty or opened.area < poly.area * 0.5:
+            return ring
+
+        result = list(opened.exterior.coords)
+        if len(result) < 3:
+            return ring
+
+        result = [(x * pixels_per_yard, y * pixels_per_yard) for x, y in result]
+        return _dedupe_adjacent(result)
+    except Exception:
+        return ring
+
+
 def chaikin_smooth(ring: list[tuple[float, float]], iterations: int = 3) -> list[tuple[float, float]]:
     """Smooth a closed polygon ring using Chaikin's corner-cutting algorithm.
     
@@ -384,16 +449,27 @@ def chaikin_smooth_open(line: list[tuple[float, float]], iterations: int = 3) ->
     return points
 
 
-def smooth_hole_geometry(hole_geom: dict, iterations: int = 3) -> dict:
-    """Apply Chaikin smoothing to all polygon rings and open lines in a hole geometry dict.
+def smooth_hole_geometry(
+    hole_geom: dict,
+    iterations: int = 3,
+    pixels_per_yard: float = 0.0,
+) -> dict:
+    """Apply morphological opening + Chaikin smoothing to a hole's geometry dict.
 
-    Closed polygon features (fairway, green, bunkers, water, rough_boundary) use the
-    closed chaikin_smooth(). Open linear features (paths, waterways) use chaikin_smooth_open().
+    Fairway polygons are first morphologically opened (erode then dilate)
+    with a 3-yard structuring element to remove narrow walkway protrusions.
+    Then all closed polygon rings use chaikin_smooth().
+    Open linear features (paths, waterways) use chaikin_smooth_open().
     Tee box points are passed through unchanged.
+
+    Pass pixels_per_yard to enable opening. When 0 (default),
+    opening is skipped (backward-compatible).
     """
     smoothed = {}
     for feature_type in ("fairway", "green", "bunkers", "water", "rough_boundary"):
         rings = hole_geom.get(feature_type, [])
+        if feature_type == "fairway" and pixels_per_yard > 0:
+            rings = [opening_ring(ring, 3.0, pixels_per_yard) for ring in rings]
         smoothed[feature_type] = [chaikin_smooth(ring, iterations) for ring in rings]
     # Open linear features — use open smoother that preserves endpoints
     smoothed["paths"] = [chaikin_smooth_open(line, iterations) for line in hole_geom.get("paths", [])]

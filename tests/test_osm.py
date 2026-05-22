@@ -32,8 +32,8 @@ class TestClassifyGolfTags:
         assert _classify_tags({"golf": "hole"}) is None
 
     def test_classify_golf_rough(self):
-        """'rough' is not in _GOLF_TAG_MAP but has a golf tag — unclassified."""
-        assert _classify_tags({"golf": "rough"}) == "unclassified"
+        """'rough' is not in the whitelist — excluded."""
+        assert _classify_tags({"golf": "rough"}) is None
 
 
 class TestClassifyCartpathBypass:
@@ -120,10 +120,10 @@ class TestClassifyExcluded:
 
 
 class TestClassifyUnclassified:
-    """Tags that aren't excluded and don't match any known category."""
+    """Tags that don't match any whitelist category are silently dropped."""
 
     def test_classify_unknown_tags(self):
-        assert _classify_tags({"foo": "bar"}) == "unclassified"
+        assert _classify_tags({"foo": "bar"}) is None
 
 
 # ---------------------------------------------------------------------------
