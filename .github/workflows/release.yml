@@ -49,21 +49,19 @@ jobs:
           echo "Created: $OUT"
           ls -lh dist/
 
-      - name: Read release notes
+      - name: Fetch release notes from merged PR
         id: notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          NOTES_FILE="dist/cartographer_${VERSION}.txt"
-
-          if [ -f "$NOTES_FILE" ]; then
-            echo "notes_exist=true" >> $GITHUB_OUTPUT
-            NOTES=$(cat "$NOTES_FILE")
-            echo "notes<<EOF" >> $GITHUB_OUTPUT
-            echo "$NOTES" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          else
-            echo "notes_exist=false" >> $GITHUB_OUTPUT
+          PR_BODY=$(gh pr list --state merged --base main --limit 1 --json body --jq '.[0].body')
+          if [ -z "$PR_BODY" ]; then
             echo "notes=Release $VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "notes<<EOF" >> $GITHUB_OUTPUT
+            echo "$PR_BODY" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
           fi
 
       - name: Create GitHub Release
