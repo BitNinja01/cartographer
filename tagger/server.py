@@ -22,6 +22,26 @@ def start_tagger(course_name: str, osm_path: Path) -> threading.Event:
     features = parse_osm_file(osm_path)
     existing_geo = load_courses_geo().get(course_name, {})
 
+    # Compute map bounds from golf features only (fairway, green, bunker, tee).
+    # Excludes water and paths which may be huge (rivers, long cart paths) and
+    # would unnecessarily zoom the view out.
+    golf_types = {"fairway", "green", "bunker", "tee"}
+    lats, lons = [], []
+    for f in features:
+        if f["type"] not in golf_types:
+            continue
+        if f["is_point"]:
+            lats.append(f["geometry"][0])
+            lons.append(f["geometry"][1])
+        else:
+            for pt in f["geometry"]:
+                lats.append(pt[0])
+                lons.append(pt[1])
+    bounds = (
+        {"minlat": min(lats), "minlon": min(lons), "maxlat": max(lats), "maxlon": max(lons)}
+        if lats else None
+    )
+
     app = Flask(__name__, static_folder=str(_STATIC_DIR))
     shutdown_event = threading.Event()
 
@@ -59,6 +79,7 @@ def start_tagger(course_name: str, osm_path: Path) -> threading.Event:
             "features": geojson_features,
             "course_name": course_name,
             "existing": existing_geo,
+            "bounds": bounds,
         })
 
     @app.route("/api/save", methods=["POST"])
