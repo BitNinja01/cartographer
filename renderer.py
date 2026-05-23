@@ -208,11 +208,11 @@ def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = Fa
     for i in range(1, 6):
         dwg.add(dwg.line(
             start=(x_offset + i * grid_step, 0), end=(x_offset + i * grid_step, ch),
-            stroke="#999", stroke_width=0.3,
+            stroke="#000000", stroke_width=0.3,
         ))
         dwg.add(dwg.line(
             start=(0, i * grid_step), end=(cw, i * grid_step),
-            stroke="#999", stroke_width=0.3,
+            stroke="#000000", stroke_width=0.3,
         ))
 
     return dwg.tostring()

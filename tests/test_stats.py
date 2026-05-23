@@ -13,18 +13,18 @@ def test_fairway_misses_par_3(make_round):
 
 def test_fairway_misses_few_rounds(make_round):
     rounds = [make_round() for _ in range(2)]
-    assert calc_fairway_misses(rounds, 1, 4) == "_____________"
+    assert calc_fairway_misses(rounds, 1, 4) == "L: \u00b7 R:"
 
 
 def test_fairway_misses_empty_rounds(make_round):
-    assert calc_fairway_misses([], 1, 4) == "_____________"
+    assert calc_fairway_misses([], 1, 4) == "L: \u00b7 R:"
 
 
 def test_fairway_misses_all_hits(make_round):
     rounds = [make_round() for _ in range(3)]
     for rnd in rounds:
         rnd["holes"]["1"]["fairway"] = "H"
-    assert calc_fairway_misses(rounds, 1, 4) == "_____________"
+    assert calc_fairway_misses(rounds, 1, 4) == "L: \u00b7 R:"
 
 
 def test_fairway_misses_mixed(make_round):
@@ -38,25 +38,25 @@ def test_fairway_misses_missing_hole_key(make_round):
     rounds = [make_round() for _ in range(3)]
     for rnd in rounds:
         del rnd["holes"]["1"]
-    assert calc_fairway_misses(rounds, 1, 4) == "_____________"
+    assert calc_fairway_misses(rounds, 1, 4) == "L: \u00b7 R:"
 
 
 # --- calc_gir_misses ---
 
 def test_gir_misses_few_rounds(make_round):
     rounds = [make_round() for _ in range(2)]
-    assert calc_gir_misses(rounds, 1) == "_____________"
+    assert calc_gir_misses(rounds, 1) == "S: \u00b7 LO: \u00b7 L: \u00b7 R:"
 
 
 def test_gir_misses_empty_rounds(make_round):
-    assert calc_gir_misses([], 1) == "_____________"
+    assert calc_gir_misses([], 1) == "S: \u00b7 LO: \u00b7 L: \u00b7 R:"
 
 
 def test_gir_misses_all_hits(make_round):
     rounds = [make_round() for _ in range(3)]
     for rnd in rounds:
         rnd["holes"]["1"]["gir"] = "H"
-    assert calc_gir_misses(rounds, 1) == "_____________"
+    assert calc_gir_misses(rounds, 1) == "S: \u00b7 LO: \u00b7 L: \u00b7 R:"
 
 
 def test_gir_misses_mixed(make_round):
@@ -70,18 +70,18 @@ def test_gir_misses_missing_hole_key(make_round):
     rounds = [make_round() for _ in range(3)]
     for rnd in rounds:
         del rnd["holes"]["1"]
-    assert calc_gir_misses(rounds, 1) == "_____________"
+    assert calc_gir_misses(rounds, 1) == "S: \u00b7 LO: \u00b7 L: \u00b7 R:"
 
 
 # --- calc_benchmark ---
 
 def test_benchmark_few_rounds(make_round):
     rounds = [make_round() for _ in range(2)]
-    assert calc_benchmark(rounds, 1, 4, 15.0, 10) == "_____________"
+    assert calc_benchmark(rounds, 1, 4, 15.0, 10) == "Avg: \u00b7 Exp:"
 
 
 def test_benchmark_empty_rounds(make_round):
-    assert calc_benchmark([], 1, 4, 15.0, 10) == "_____________"
+    assert calc_benchmark([], 1, 4, 15.0, 10) == "Avg: \u00b7 Exp:"
 
 
 def test_benchmark_normal(make_round):
@@ -96,25 +96,25 @@ def test_benchmark_missing_score_field(make_round):
     rounds = [make_round() for _ in range(3)]
     for rnd in rounds:
         rnd["holes"]["1"].pop("score", None)
-    assert calc_benchmark(rounds, 1, 4, 15.0, 10) == "_____________"
+    assert calc_benchmark(rounds, 1, 4, 15.0, 10) == "Avg: \u00b7 Exp:"
 
 
 def test_benchmark_empty_score(make_round):
     rounds = [make_round() for _ in range(3)]
     for rnd in rounds:
         rnd["holes"]["1"]["score"] = ""
-    assert calc_benchmark(rounds, 1, 4, 15.0, 10) == "_____________"
+    assert calc_benchmark(rounds, 1, 4, 15.0, 10) == "Avg: \u00b7 Exp:"
 
 
 # --- calc_penalties ---
 
 def test_penalties_few_rounds(make_round):
     rounds = [make_round() for _ in range(2)]
-    assert calc_penalties(rounds, 1) == "_____________"
+    assert calc_penalties(rounds, 1) == "Avg:"
 
 
 def test_penalties_empty_rounds(make_round):
-    assert calc_penalties([], 1) == "_____________"
+    assert calc_penalties([], 1) == "Avg:"
 
 
 def test_penalties_normal(make_round):
@@ -142,4 +142,4 @@ def test_penalties_missing_hole_key(make_round):
     rounds = [make_round() for _ in range(3)]
     for rnd in rounds:
         del rnd["holes"]["1"]
-    assert calc_penalties(rounds, 1) == "_____________"
+    assert calc_penalties(rounds, 1) == "Avg:"

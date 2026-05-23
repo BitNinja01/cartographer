@@ -275,8 +275,11 @@ def render_hole_page(
             insert=(yd_rect_x, yd_rect_y),
             size=(yd_rect_w, yd_rect_h),
             fill="white",
-            fill_opacity=0.75,
-            stroke="none",
+            fill_opacity=1.0,
+            stroke="#000000",
+            stroke_width=0.5,
+            rx=3,
+            ry=3,
         ))
 
         # Text: right-aligned to rect interior right edge — colons align naturally
@@ -350,55 +353,98 @@ def _render_slot(
         if stats_data and hole_num in stats_data:
             hole_stats = stats_data[hole_num]
             stats = [
-                ("FAIRWAY MISSES", hole_stats.get("fairway_misses", "_____________")),
-                ("GIR MISSES", hole_stats.get("gir_misses", "_____________")),
-                ("VS EXPECTED", hole_stats.get("benchmark", "_____________")),
-                ("PENALTIES", hole_stats.get("penalties", "_____________")),
+                ("FAIRWAY MISSES", hole_stats.get("fairway_misses", "L: \u00b7 R:")),
+                ("GIR MISSES", hole_stats.get("gir_misses", "S: \u00b7 LO: \u00b7 L: \u00b7 R:")),
+                ("SCORE", hole_stats.get("benchmark", "Avg: \u00b7 Exp:")),
+                ("PENALTIES", hole_stats.get("penalties", "Avg:")),
             ]
         else:
             stats = [
-                ("FAIRWAY MISSES", "_____________"),
-                ("GIR MISSES", "_____________"),
-                ("VS EXPECTED", "_____________"),
-                ("PENALTIES", "_____________"),
+                ("FAIRWAY MISSES", "L: \u00b7 R:"),
+                ("GIR MISSES", "S: \u00b7 LO: \u00b7 L: \u00b7 R:"),
+                ("SCORE", "Avg: \u00b7 Exp:"),
+                ("PENALTIES", "Avg:"),
             ]
 
         positions = [
-            (x, y),                          # top-left
-            (x + box_w, y),                  # top-right
-            (x, y + box_h),                  # bottom-left
-            (x + box_w, y + box_h),          # bottom-right
+            (x, y),
+            (x + box_w, y),
+            (x, y + box_h),
+            (x + box_w, y + box_h),
         ]
 
-        for (bx, by), (label, value) in zip(positions, stats):
-            # Border
+        for (bx, by), (title, value) in zip(positions, stats):
             dwg.add(dwg.rect(
                 insert=(bx, by),
                 size=(box_w, box_h),
                 fill="white",
-                stroke="#ccc",
+                stroke="#000000",
                 stroke_width=0.5,
             ))
 
-            # Label (small caps, top)
+            rows = value.split(" \u00b7 ")
+            header_h = 22
+            row_h = (box_h - header_h) / max(len(rows), 1)
+            col1_w = 38
+
             dwg.add(dwg.text(
-                label,
-                insert=(bx + box_w / 2, by + 20),
-                font_size="9pt",
+                title,
+                insert=(bx + box_w / 2, by + header_h / 2 + 3),
+                font_size="8pt",
                 font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-                fill="#555",
+                fill="#000000",
+                font_weight="bold",
                 text_anchor="middle",
             ))
 
-            # Value (centered)
-            dwg.add(dwg.text(
-                value,
-                insert=(bx + box_w / 2, by + box_h / 2 + 5),
-                font_size="11pt",
-                font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-                fill="#212121",
-                text_anchor="middle",
+            dwg.add(dwg.line(
+                start=(bx, by + header_h),
+                end=(bx + box_w, by + header_h),
+                stroke="#000000",
+                stroke_width=0.5,
             ))
+
+            dwg.add(dwg.line(
+                start=(bx + col1_w, by + header_h),
+                end=(bx + col1_w, by + box_h),
+                stroke="#000000",
+                stroke_width=0.3,
+            ))
+
+            for i, part in enumerate(rows):
+                row_top = by + header_h + i * row_h
+                if " " in part:
+                    lbl, val = part.split(" ", 1)
+                else:
+                    lbl = part
+                    val = ""
+
+                dwg.add(dwg.text(
+                    lbl,
+                    insert=(bx + col1_w - 4, row_top + row_h / 2 + 3),
+                    font_size="9pt",
+                    font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
+                    fill="#000000",
+                    text_anchor="end",
+                ))
+
+                if val:
+                    dwg.add(dwg.text(
+                        val,
+                        insert=(bx + col1_w + 4, row_top + row_h / 2 + 3),
+                        font_size="9pt",
+                        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
+                        fill="#000000",
+                        text_anchor="start",
+                    ))
+
+                if i < len(rows) - 1:
+                    dwg.add(dwg.line(
+                        start=(bx, row_top + row_h),
+                        end=(bx + box_w, row_top + row_h),
+                        stroke="#000000",
+                        stroke_width=0.3,
+                    ))
 
     elif content_type == "notes":
         # Ruled lines
@@ -408,7 +454,7 @@ def _render_slot(
             dwg.add(dwg.line(
                 start=(x, line_y),
                 end=(x + width, line_y),
-                stroke="#ddd",
+                stroke="#000000",
                 stroke_width=0.5,
             ))
             line_y += line_spacing
@@ -610,13 +656,13 @@ def compose_chart_page(
         font_size="14pt",
         font_weight="bold",
         font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-        fill="#212121",
+        fill="#000000",
         text_anchor="middle",
     ))
 
     cols = 4
     rows = 15
-    headers = ["Club", "Carry", "Total", "Notes"]
+    headers = ["Club", "Carry", "Half", "Max"]
     grid_top = 55
     grid_bottom = PAGE_CONTENT_H
     grid_left = MARGIN
@@ -634,7 +680,7 @@ def compose_chart_page(
                 insert=(x, y),
                 size=(cw, rh),
                 fill="white",
-                stroke="#ccc",
+                stroke="#000000",
                 stroke_width=0.5,
             ))
             if row == 0:
@@ -643,7 +689,7 @@ def compose_chart_page(
                     insert=(x + cw / 2, y + rh / 2 + 4),
                     font_size="11pt",
                     font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-                    fill="#555",
+                    fill="#000000",
                     text_anchor="middle",
                 ))
 
@@ -662,7 +708,7 @@ def compose_notes_page() -> str:
         dwg.add(dwg.line(
             start=(MARGIN, line_y),
             end=(PAGE_W - MARGIN, line_y),
-            stroke="#ddd",
+            stroke="#000000",
             stroke_width=0.5,
         ))
         line_y += line_spacing

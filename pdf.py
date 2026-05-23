@@ -66,7 +66,7 @@ def _get_hole_render_data(
     if not hole_geom:
         return None
 
-    hole_geom = smooth_hole_geometry(hole_geom)
+    hole_geom = smooth_hole_geometry(hole_geom, pixels_per_yard=ppy)
     fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H, left_bias=HOLE_LEFT_BIAS)
 
     if settings.get("cartographer.yardage_arcs", True):
