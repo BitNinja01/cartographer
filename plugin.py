@@ -17,7 +17,7 @@ class CartographerPlugin(PinSheetPlugin):
     """Adds course geometry, hole diagrams, and yardage book generation to PinSheet."""
 
     name = "cartographer"
-    version = "1.1.1"
+    version = "1.1.2"
 
     def __init__(self) -> None:
         super().__init__()
