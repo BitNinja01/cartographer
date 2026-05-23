@@ -61,7 +61,7 @@ def calc_gir_misses(rounds: list[dict], hole_num: int) -> str:
 
     total_misses = short + long + left + right
     if total_misses == 0:
-        return "_____________"
+        return "S: \u00b7 LO: \u00b7 L: \u00b7 R:"
 
     s_pct = round(short / total_misses * 100)
     lo_pct = round(long / total_misses * 100)
