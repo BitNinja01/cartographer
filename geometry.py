@@ -334,6 +334,59 @@ def compute_yardage_arcs(
     ]
 
 
+def find_overview_rotation(
+    all_points: list[tuple[float, float]],
+    canvas_w: float,
+    canvas_h: float,
+    padding: float = 10.0,
+) -> float:
+    """Find rotation angle that maximises the uniform scale-to-fit of a set of points.
+
+    Brute-force search over -90 to 90 degrees at 2-degree increments around the
+    centroid. Returns the angle whose rotated bounding box achieves the largest
+    scale factor when fitted into (canvas_w - 2*padding) x (canvas_h - 2*padding).
+
+    Returns 0.0 for fewer than 2 points.
+    """
+    if len(all_points) < 2:
+        return 0.0
+
+    cx = sum(x for x, y in all_points) / len(all_points)
+    cy = sum(y for x, y in all_points) / len(all_points)
+
+    avail_w = canvas_w - 2 * padding
+    avail_h = canvas_h - 2 * padding
+
+    best_angle = 0.0
+    best_scale = 0.0
+
+    for angle_deg in range(-90, 91, 2):
+        rad = math.radians(angle_deg)
+        cos_a, sin_a = math.cos(rad), math.sin(rad)
+
+        min_x = min_y = float("inf")
+        max_x = max_y = float("-inf")
+        for x, y in all_points:
+            dx = x - cx
+            dy = y - cy
+            rx = dx * cos_a - dy * sin_a + cx
+            ry = dx * sin_a + dy * cos_a + cy
+            min_x = min(min_x, rx)
+            max_x = max(max_x, rx)
+            min_y = min(min_y, ry)
+            max_y = max(max_y, ry)
+
+        geom_w = max_x - min_x or 1.0
+        geom_h = max_y - min_y or 1.0
+        scale = min(avail_w / geom_w, avail_h / geom_h)
+
+        if scale > best_scale:
+            best_scale = scale
+            best_angle = angle_deg
+
+    return best_angle
+
+
 def _angle_between(v1: tuple[float, float], v2: tuple[float, float]) -> float:
     """Return the turn angle in degrees between two edge vectors (0-180)."""
     dot = v1[0] * v2[0] + v1[1] * v2[1]
