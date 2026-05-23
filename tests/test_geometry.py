@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from cartographer.geometry import (
@@ -5,7 +7,7 @@ from cartographer.geometry import (
     project_ring, project_course, get_hole_bounds, get_green_centroid,
     get_green_rotation, fit_hole, compute_yardage_arcs,
     chaikin_smooth, chaikin_smooth_open, smooth_hole_geometry,
-    compute_pixels_per_yard_from_geometry,
+    compute_pixels_per_yard_from_geometry, find_overview_rotation,
 )
 
 # ---------------------------------------------------------------------------
@@ -471,3 +473,68 @@ class TestComputePixelsPerYardFromGeometry:
         }
         ppy = compute_pixels_per_yard_from_geometry(holes, canvas_h=504.0, padding=20.0)
         assert 0.1 < ppy < 10.0
+
+
+# ---------------------------------------------------------------------------
+# find_overview_rotation
+# ---------------------------------------------------------------------------
+
+class TestFindOverviewRotation:
+
+    def _scale_at(self, points, angle_deg, avail_w=250.0, avail_h=370.0):
+        """Helper: compute the uniform scale factor for the points at a given rotation."""
+        r = math.radians(angle_deg)
+        c, s = math.cos(r), math.sin(r)
+        cx = sum(x for x, _ in points) / len(points)
+        cy = sum(y for _, y in points) / len(points)
+        mx = my = float("inf")
+        Mx = My = float("-inf")
+        for x, y in points:
+            rx = (x - cx) * c - (y - cy) * s + cx
+            ry = (x - cx) * s + (y - cy) * c + cy
+            mx = min(mx, rx); Mx = max(Mx, rx)
+            my = min(my, ry); My = max(My, ry)
+        return min(avail_w / (Mx - mx or 1), avail_h / (My - my or 1))
+
+    def test_empty_points_returns_zero(self):
+        assert find_overview_rotation([], 270, 390) == 0.0
+
+    def test_single_point_returns_zero(self):
+        assert find_overview_rotation([(100.0, 100.0)], 270, 390) == 0.0
+
+    def test_horizontal_strip_improves_scale(self):
+        """A 400×30 strip should find a rotation that improves the scale
+        factor over 0° for a portrait canvas (270×390)."""
+        points = [(x, y) for x in range(0, 401, 10) for y in (0, 30)]
+        angle = find_overview_rotation(points, 270, 390, padding=10.0)
+        assert self._scale_at(points, angle) > self._scale_at(points, 0.0)
+        assert -90 <= angle <= 90
+
+    def test_vertical_strip_improves_scale(self):
+        """A 30×400 strip — rotation can also help a vertical strip fit
+        better if height exceeds available canvas."""
+        points = [(x, y) for x in (0, 30) for y in range(0, 401, 10)]
+        angle = find_overview_rotation(points, 270, 390, padding=10.0)
+        assert self._scale_at(points, angle) > self._scale_at(points, 0.0)
+        assert -90 <= angle <= 90
+
+    def test_square_is_axis_aligned(self):
+        """A 100×100 grid of points is symmetric — the optimal angle
+        aligns with an axis (±90° or 0°)."""
+        points = [(x, y) for x in range(0, 101, 10) for y in range(0, 101, 10)]
+        angle = find_overview_rotation(points, 270, 390, padding=10.0)
+        assert angle in (-90.0, 0.0, 90.0)
+
+    def test_extreme_aspect_strip_improves_scale(self):
+        """Points spanning 1000×20 benefit from rotation for a portrait canvas."""
+        points = [(x, y) for x in range(0, 1001, 50) for y in (0, 20)]
+        angle = find_overview_rotation(points, 270, 390, padding=10.0)
+        assert self._scale_at(points, angle) > self._scale_at(points, 0.0)
+        assert -90 <= angle <= 90
+
+    def test_scale_is_never_worse(self):
+        """The returned angle should never give a smaller scale than 0°,
+        for any reasonable point set."""
+        points = [(x, y) for x in range(0, 201, 20) for y in range(0, 51, 10)]
+        angle = find_overview_rotation(points, 270, 390, padding=10.0)
+        assert self._scale_at(points, angle) >= self._scale_at(points, 0.0)
