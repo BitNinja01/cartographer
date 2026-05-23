@@ -6,10 +6,16 @@ for hole layout diagrams and green detail views.
 """
 from __future__ import annotations
 
+import math
+
 import svgwrite
 
 from cartographer.data import load_courses_geo
-from cartographer.geometry import project_course, fit_hole, smooth_hole_geometry, chaikin_smooth, compute_pixels_per_yard_from_geometry, get_green_centroid
+from cartographer.geometry import (
+    project_course, fit_hole, smooth_hole_geometry, chaikin_smooth,
+    compute_pixels_per_yard_from_geometry, get_green_centroid,
+    find_overview_rotation, opening_ring,
+)
 
 # Feature render colours — (stroke, fill)
 _COLOURS = {
@@ -295,12 +301,18 @@ def render_course_overview(
     canvas_w: float,
     canvas_h: float,
     padding: float = 20.0,
+    rotation: float | None = None,
+    pixels_per_yard: float = 0.0,
 ) -> str:
     """Render all 18 holes as a course overview SVG.
 
     projected: output of project_course() — pixel coords per hole.
     canvas_w, canvas_h: SVG canvas dimensions in points.
     padding: margin around the course geometry.
+    rotation: rotation angle in degrees. If None, automatically computed
+        to maximise the scale-to-fit. 0 disables rotation.
+    pixels_per_yard: projection scale. When > 0, fairway polygons are
+        morphologically opened (3-yard buffer) to remove narrow protrusions.
     """
     dwg = svgwrite.Drawing(
         size=(f"{canvas_w}pt", f"{canvas_h}pt"),
@@ -308,11 +320,10 @@ def render_course_overview(
     )
     dwg.add(dwg.rect(insert=(0, 0), size=(canvas_w, canvas_h), fill="white"))
 
-    # Collect all geometry from all holes and compute global bounds
+    # Collect all geometry from all holes for rotation computation
     all_features: dict[str, list] = {ft: [] for ft in ("fairway", "green", "bunkers", "rough_boundary")}
     all_tees: list[tuple[float, float]] = []
-    global_min_x = global_min_y = float("inf")
-    global_max_x = global_max_y = float("-inf")
+    all_points: list[tuple[float, float]] = []
 
     for hole_num in range(1, 19):
         hole = projected.get(str(hole_num), {})
@@ -320,20 +331,65 @@ def render_course_overview(
             for ring in hole.get(ft, []):
                 if ring:
                     all_features[ft].append(ring)
-                    for x, y in ring:
-                        global_min_x = min(global_min_x, x)
-                        global_min_y = min(global_min_y, y)
-                        global_max_x = max(global_max_x, x)
-                        global_max_y = max(global_max_y, y)
+                    all_points.extend(ring)
         for tx, ty in hole.get("tee_boxes", {}).values():
             all_tees.append((tx, ty))
-            global_min_x = min(global_min_x, tx)
-            global_min_y = min(global_min_y, ty)
-            global_max_x = max(global_max_x, tx)
-            global_max_y = max(global_max_y, ty)
+            all_points.append((tx, ty))
 
-    if global_min_x == float("inf"):
+    if not all_points:
         return dwg.tostring()
+
+    # Compute optimal rotation if not provided
+    if rotation is None:
+        rotation = find_overview_rotation(all_points, canvas_w, canvas_h, padding)
+
+    # Rotate all features around centroid if rotation is non-zero
+    if rotation != 0.0:
+        cx = sum(x for x, y in all_points) / len(all_points)
+        cy = sum(y for x, y in all_points) / len(all_points)
+        rad = math.radians(rotation)
+        cos_a, sin_a = math.cos(rad), math.sin(rad)
+
+        def rotate_point(px: float, py: float) -> tuple[float, float]:
+            dx = px - cx
+            dy = py - cy
+            return dx * cos_a - dy * sin_a + cx, dx * sin_a + dy * cos_a + cy
+
+        def rotate_ring(ring: list) -> list:
+            return [list(rotate_point(x, y)) for x, y in ring]
+
+        for ft in all_features:
+            all_features[ft] = [rotate_ring(r) for r in all_features[ft]]
+        all_tees = [list(rotate_point(x, y)) for x, y in all_tees]
+
+    # Morphological opening on fairway rings at overview scale
+    if pixels_per_yard > 0:
+        opened: dict[str, list] = {ft: [] for ft in all_features}
+        for ft in all_features:
+            for ring in all_features[ft]:
+                ring_pts = [(x, y) for x, y in ring]
+                if ft == "fairway":
+                    ring_pts = opening_ring(ring_pts, 3.0, pixels_per_yard)
+                ring_pts = [list(pt) for pt in ring_pts]
+                if len(ring_pts) >= 3:
+                    opened[ft].append(ring_pts)
+        all_features = opened
+
+    # Recompute bounds from (potentially rotated/opened) features
+    global_min_x = global_min_y = float("inf")
+    global_max_x = global_max_y = float("-inf")
+    for ring_list in all_features.values():
+        for ring in ring_list:
+            for x, y in ring:
+                global_min_x = min(global_min_x, x)
+                global_max_x = max(global_max_x, x)
+                global_min_y = min(global_min_y, y)
+                global_max_y = max(global_max_y, y)
+    for x, y in all_tees:
+        global_min_x = min(global_min_x, x)
+        global_max_x = max(global_max_x, x)
+        global_min_y = min(global_min_y, y)
+        global_max_y = max(global_max_y, y)
 
     geom_w = global_max_x - global_min_x or 1.0
     geom_h = global_max_y - global_min_y or 1.0

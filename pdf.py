@@ -328,6 +328,7 @@ def generate_book(
                 PRINTABLE_W,
                 PAGE_CONTENT_H - 4 * MARGIN - 24,
                 padding=10.0,
+                pixels_per_yard=overview_ppy,
             )
             back_svg = compose_back_page(full_course_svg=overview_svg)
             back_svg = flip_page_svg(back_svg, PAGE_W, PAGE_CONTENT_H)
