@@ -275,7 +275,7 @@ def fit_hole(
         return [list(rotate_point(x, y)) for x, y in ring]
 
     rotated: dict[str, Any] = {}
-    for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths"):
+    for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths", "contours"):
         rotated[feature_type] = [rotate_ring(r) for r in hole_geom.get(feature_type, [])]
     rotated["tee_boxes"] = {
         name: list(rotate_point(x, y))
@@ -304,7 +304,7 @@ def fit_hole(
         return [list(transform_point(x, y)) for x, y in ring]
 
     fitted: dict[str, Any] = {}
-    for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths"):
+    for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths", "contours"):
         fitted[feature_type] = [transform_ring(r) for r in rotated.get(feature_type, [])]
     fitted["tee_boxes"] = {
         name: list(transform_point(x, y))
