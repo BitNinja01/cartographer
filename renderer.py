@@ -192,7 +192,12 @@ def render_green(
     x_offset = (cw - ch) / 2
 
     if fitted:
-        raw = {"green": green_geom.get("green", [])}
+        raw = {"green": green_geom.get("green", []),
+               "fairway": green_geom.get("fairway", []),
+               "water": green_geom.get("water", []),
+               "bunkers": green_geom.get("bunkers", []),
+               "rough_boundary": green_geom.get("rough_boundary", []),
+               "paths": green_geom.get("paths", [])}
     else:
         raw, _, _, _ = fit_hole(
             {"green": green_geom.get("green", []),
@@ -205,6 +210,17 @@ def render_green(
     stroke_col, fill_col = _COLOURS["green"]
     g = dwg.g(transform=f"translate({x_offset}, 0)")
     if shading_data is not None:
+        for feature_type in ("rough_boundary", "fairway", "water", "bunkers"):
+            s, f = _COLOURS[feature_type]
+            if feature_type == "rough_boundary":
+                f = _COLOURS["fairway"][1]
+            rings = raw.get(feature_type, [])
+            if rings:
+                _draw_polygons(dwg, g, rings, stroke=s, fill=f)
+        stroke_col_p, _ = _COLOURS["paths"]
+        path_lines = raw.get("paths", [])
+        if path_lines:
+            _draw_lines(dwg, g, path_lines, stroke=stroke_col_p)
         _draw_polygons(dwg, g, raw.get("green", []), stroke="none", fill="white")
         green_ring = raw.get("green", [])
         if green_ring:
@@ -216,6 +232,7 @@ def render_green(
                 rotate_angle=shading_data.get("rotate_angle", 0.0),
                 rotate_cx=shading_data.get("rotate_cx", 0.0),
                 rotate_cy=shading_data.get("rotate_cy", 0.0),
+                contour_paths=shading_data.get("contour_paths"),
             )
         _draw_polygons(dwg, g, raw.get("green", []), stroke=stroke_col, fill="none")
     else:
@@ -257,6 +274,7 @@ def _draw_elevation_shading(
     rotate_angle: float = 0.0,
     rotate_cx: float = 0.0,
     rotate_cy: float = 0.0,
+    contour_paths: list[list[list[float]]] | None = None,
 ) -> None:
     """Draw elevation shading as an SVG <image> clipped to the green polygon.
 
@@ -294,7 +312,13 @@ def _draw_elevation_shading(
         href=data_uri,
         insert=(bx, by),
         size=(bw, bh),
+        opacity="0.5",
     ))
+    if contour_paths:
+        for path in contour_paths:
+            if len(path) >= 2:
+                d = "M " + " ".join(f"{p[0]:.2f},{p[1]:.2f}" for p in path)
+                inner.add(dwg.path(d=d, stroke="#000000", stroke_width=_STROKE_WIDTH, fill="none"))
 
 
 def _draw_green_grid(

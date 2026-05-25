@@ -216,7 +216,7 @@ def test_adaptive_contour_min_clamp():
 
 
 def test_adaptive_contour_flat():
-    """Flat elevation (<0.25m range) returns None."""
+    """Flat elevation (<0.10m range) returns None."""
     from unittest.mock import patch, MagicMock
     from pathlib import Path
     import numpy as np
@@ -230,7 +230,7 @@ def test_adaptive_contour_flat():
     x = np.arange(nx, dtype=float)
     y = np.arange(ny, dtype=float)
     x_2d, y_2d = np.meshgrid(x, y, indexing="xy")
-    z = 100.0 + np.tile(np.linspace(0, 0.2, nx), (ny, 1))
+    z = 100.0 + np.tile(np.linspace(0, 0.09, nx), (ny, 1))
 
     win_transform = Affine(1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
 

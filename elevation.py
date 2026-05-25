@@ -460,7 +460,7 @@ def compute_green_contours(
         z_min, z_max = np.nanmin(z_green), np.nanmax(z_green)
     else:
         z_min, z_max = np.nanmin(z), np.nanmax(z)
-    if z_max - z_min < 0.25:
+    if z_max - z_min < 0.10:
         return None
 
     elevation_range = z_max - z_min
@@ -535,7 +535,7 @@ def compute_elevation_shading(
     else:
         return None
 
-    if z_max - z_min < 0.25:
+    if z_max - z_min < 0.10:
         return None
 
     z, _ = _upsample_dem(z, win_transform, factor=4)

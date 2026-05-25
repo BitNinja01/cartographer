@@ -11,6 +11,8 @@ import math
 import sys
 from pathlib import Path
 
+import numpy as np
+
 import cairosvg
 from PIL import Image
 from shapely.geometry import Polygon, LineString
@@ -23,7 +25,7 @@ from cartographer.geometry import (
     compute_pixels_per_yard_from_geometry,
 )
 from cartographer.renderer import render_hole, render_green, render_course_overview
-from cartographer.elevation import get_course_dem, compute_elevation_shading
+from cartographer.elevation import get_course_dem, compute_elevation_shading, compute_contours
 from cartographer.layout import (
     compose_sheet, compose_front_page, compose_back_page, compose_chart_page,
     compose_notes_page, render_hole_page, render_bottom_slots,
@@ -132,6 +134,32 @@ def _get_hole_render_data(
         )
         slot_fitted["green"] = [chaikin_smooth(r) for r in slot_fitted.get("green", [])]
 
+        proj_greens = hole_geom.get("green", [])
+        if proj_greens:
+            proj_ring = proj_greens[0]
+            green_cx = sum(p[0] for p in proj_ring) / len(proj_ring)
+            green_cy = sum(p[1] for p in proj_ring) / len(proj_ring)
+            rad = math.radians(green_rot)
+            cos_a, sin_a = math.cos(rad), math.sin(rad)
+
+            def _fit_point(x, y):
+                rx = (x - green_cx) * cos_a - (y - green_cy) * sin_a + green_cx
+                ry = (x - green_cx) * sin_a + (y - green_cy) * cos_a + green_cy
+                return [rx * slot_scale + off_x, ry * slot_scale + off_y]
+
+            for feature_type in ("fairway", "water", "bunkers", "rough_boundary"):
+                rings = hole_geom.get(feature_type, [])
+                fitted_rings = []
+                for ring in rings:
+                    fitted = [_fit_point(x, y) for x, y in ring]
+                    fitted_rings.append(chaikin_smooth(fitted))
+                slot_fitted[feature_type] = fitted_rings
+
+            fitted_paths = []
+            for line in hole_geom.get("paths", []):
+                fitted_paths.append([_fit_point(x, y) for x, y in line])
+            slot_fitted["paths"] = fitted_paths
+
         # Elevation shading: extract DEM, resize to projected geographic bbox,
         # then apply rotation as an SVG transform (not PIL — avoids aspect-ratio
         # mismatch between geographic bbox and fitted polygon bbox).
@@ -169,12 +197,27 @@ def _get_hole_render_data(
                         import io as _io
                         buf = _io.BytesIO()
                         img_resized.save(buf, format="PNG")
+
+                        z_arr = np.array(img_resized, dtype=float)
+                        contour_levels = [i * 255.0 / 13 for i in range(1, 13)]
+                        raw_contours = compute_contours(z_arr, contour_levels)
+                        contour_paths = []
+                        for level in sorted(raw_contours):
+                            for polyline in raw_contours[level]:
+                                path = [[svg_bx + float(p[0]), svg_by + float(p[1])]
+                                        for p in polyline]
+                                if len(path) >= 2:
+                                    path_tuples = [(p[0], p[1]) for p in path]
+                                    smoothed = chaikin_smooth_open(path_tuples, iterations=3)
+                                    contour_paths.append([[x, y] for x, y in smoothed])
+
                         shading_data = {
                             "png_bytes": buf.getvalue(),
                             "bbox": (svg_bx, svg_by, svg_bx + svg_bw, svg_by + svg_bh),
                             "rotate_angle": green_rot,
                             "rotate_cx": gcx,
                             "rotate_cy": gcy,
+                            "contour_paths": contour_paths,
                         }
     else:
         slot_fitted = None
