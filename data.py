@@ -4,6 +4,7 @@ All files read/written by cartographer live under data/plugins/cartographer/.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -44,3 +45,21 @@ def save_courses_geo(data: dict) -> None:
     """Write courses_geo.json."""
     path = _get_plugin_data_dir() / "courses_geo.json"
     path.write_text(json.dumps(data, indent=2))
+
+
+def get_dem_path(course_name: str) -> Path:
+    """Return path to cached course DEM GeoTIFF."""
+    dem_dir = _get_plugin_data_dir() / "dem"
+    dem_dir.mkdir(exist_ok=True)
+    return dem_dir / f"{_course_hash(course_name)}.tif"
+
+
+def get_contours_cache_path(course_name: str) -> Path:
+    """Return path to cached contour data JSON."""
+    dem_dir = _get_plugin_data_dir() / "dem"
+    dem_dir.mkdir(exist_ok=True)
+    return dem_dir / f"{_course_hash(course_name)}_contours.json"
+
+
+def _course_hash(course_name: str) -> str:
+    return hashlib.sha256(course_name.encode()).hexdigest()[:16]
