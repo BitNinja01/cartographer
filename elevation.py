@@ -509,20 +509,22 @@ def _in_green_mask(
     src_crs: CRS,
 ) -> np.ndarray | None:
     """Return boolean mask of DEM cells whose centres fall inside the green polygon."""
-    from shapely import prepared
-    from shapely.geometry import Polygon, Point
+    from shapely import contains_xy
+    from shapely.geometry import Polygon
 
     xs, ys = _ring_to_crs(green_ring, src_crs)
     green_poly = Polygon(list(zip(xs, ys)))
-    prepped = prepared.prep(green_poly)
 
-    ny, nx = z.shape
+    valid = ~np.isnan(z)
+    if not valid.any():
+        return None
+
+    x_flat = x_2d[valid]
+    y_flat = y_2d[valid]
+    contained = contains_xy(green_poly, x_flat, y_flat)
+
     mask = np.zeros_like(z, dtype=bool)
-    for j in range(ny):
-        for i in range(nx):
-            if not np.isnan(z[j, i]):
-                if prepped.contains(Point(x_2d[j, i], y_2d[j, i])):
-                    mask[j, i] = True
+    mask[valid] = contained
     return mask if mask.any() else None
 
 

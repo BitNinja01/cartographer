@@ -83,6 +83,7 @@ def _get_hole_render_data(
     dem_path: Path | None = None,
     contour_cache: dict[int, list] | None = None,
     status_callback: callable = None,
+    compute_slots: bool = True,
 ) -> dict | None:
     """Render a single hole and return raw data for page composition.
 
@@ -90,6 +91,8 @@ def _get_hole_render_data(
     or None if hole geometry is missing.
 
     dem_path: optional path to cached DEM GeoTIFF for elevation shading.
+    compute_slots: if False, skip green-grid/shading/contour computation
+                   (used for top-half pages where only the hole diagram is rendered).
     """
     hole_key = str(hole_num)
     if hole_key not in holes_geo:
@@ -99,7 +102,7 @@ def _get_hole_render_data(
         {hole_key: holes_geo[hole_key]}, canvas_h=HOLE_CANVAS_H
     )
     effective_scale = {**scale_data, "pixels_per_yard": ppy}
-    projected = project_course(holes_geo, effective_scale)
+    projected = project_course(holes_geo, effective_scale, only_hole=hole_key)
 
     hole_geom = projected.get(hole_key, {})
     if not hole_geom:
@@ -129,25 +132,48 @@ def _get_hole_render_data(
     slot1_svg = ""
     slot2_svg = ""
 
-    if slot1_mode == "green_grid" or slot2_mode == "green_grid":
-        slot_geom = {"green": hole_geom.get("green", [])}
-        slot_fitted, off_x, off_y, slot_scale = fit_hole(
-            {
-                **slot_geom,
-                "fairway": [], "bunkers": [], "water": [],
-                "rough_boundary": [], "tee_boxes": {},
-            },
-            SLOT_H, SLOT_H, padding=15.0, rotation=green_rot,
-        )
-        slot_fitted["green"] = [chaikin_smooth(r) for r in slot_fitted.get("green", [])]
-
+    if compute_slots and (slot1_mode == "green_grid" or slot2_mode == "green_grid"):
         proj_greens = hole_geom.get("green", [])
         if proj_greens:
             proj_ring = proj_greens[0]
-            green_cx = sum(p[0] for p in proj_ring) / len(proj_ring)
-            green_cy = sum(p[1] for p in proj_ring) / len(proj_ring)
+
+            px = [p[0] for p in proj_ring]
+            py = [p[1] for p in proj_ring]
+            gc_cx = (min(px) + max(px)) / 2
+            gc_cy = (min(py) + max(py)) / 2
             rad = math.radians(green_rot)
             cos_a, sin_a = math.cos(rad), math.sin(rad)
+
+            rotated_green = []
+            for x, y in proj_ring:
+                rx = (x - gc_cx) * cos_a - (y - gc_cy) * sin_a + gc_cx
+                ry = (x - gc_cx) * sin_a + (y - gc_cy) * cos_a + gc_cy
+                rotated_green.append([rx, ry])
+
+            rpx = [p[0] for p in rotated_green]
+            rpy = [p[1] for p in rotated_green]
+            rmin_x, rmax_x = min(rpx), max(rpx)
+            rmin_y, rmax_y = min(rpy), max(rpy)
+            rw = rmax_x - rmin_x or 1.0
+            rh = rmax_y - rmin_y or 1.0
+
+            padding = 15.0
+            avail = SLOT_H - 2 * padding
+            slot_scale = min(avail / rw, avail / rh)
+            off_x = padding + (avail - rw * slot_scale) / 2 - rmin_x * slot_scale
+            off_y = padding + (avail - rh * slot_scale) / 2 - rmin_y * slot_scale
+
+            slot_fitted: dict[str, list] = {
+                ft: [] for ft in ("fairway", "water", "bunkers",
+                                  "waterways", "rough_boundary", "paths", "contours")
+            }
+            slot_fitted["tee_boxes"] = {}
+            slot_fitted["green"] = [chaikin_smooth(
+                [[x * slot_scale + off_x, y * slot_scale + off_y] for x, y in rotated_green]
+            )]
+
+            green_cx = sum(px) / len(px)
+            green_cy = sum(py) / len(py)
 
             def _fit_point(x, y):
                 rx = (x - green_cx) * cos_a - (y - green_cy) * sin_a + green_cx
@@ -166,6 +192,10 @@ def _get_hole_render_data(
             for line in slot_context_features.get("paths", []):
                 fitted_paths.append([_fit_point(x, y) for x, y in line])
             slot_fitted["paths"] = fitted_paths
+        else:
+            slot_fitted = {"green": [], "fairway": [], "bunkers": [],
+                           "water": [], "waterways": [], "rough_boundary": [],
+                           "paths": [], "contours": [], "tee_boxes": {}}
 
         # Elevation shading: extract DEM, resize to projected geographic bbox,
         # then apply rotation as an SVG transform (not PIL — avoids aspect-ratio
@@ -251,12 +281,12 @@ def _get_hole_render_data(
         slot_fitted = None
         shading_data = None
 
-    if slot1_mode == "green_grid":
+    if compute_slots and slot1_mode == "green_grid":
         slot1_svg = render_green(
             slot_fitted, canvas_w=PAGE_W, canvas_h=SLOT_H,
             fitted=True, shading_data=shading_data,
         )
-    if slot2_mode == "green_grid":
+    if compute_slots and slot2_mode == "green_grid":
         slot2_svg = render_green(
             slot_fitted, canvas_w=PAGE_W, canvas_h=SLOT_H,
             fitted=True, shading_data=shading_data,
@@ -401,7 +431,7 @@ def generate_book(
             top_hd = _get_hole_render_data(
                 top_hole, holes_geo, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
-                status_callback=status_callback,
+                status_callback=status_callback, compute_slots=False,
             )
             bottom_hd = _get_hole_render_data(
                 bottom_hole, holes_geo, scale_data, settings, course_ps,
@@ -457,7 +487,7 @@ def generate_book(
             top_hd = _get_hole_render_data(
                 top_hole, holes_geo, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
-                status_callback=status_callback,
+                status_callback=status_callback, compute_slots=False,
             )
             bottom_hd = _get_hole_render_data(
                 bottom_hole, holes_geo, scale_data, settings, course_ps,
@@ -489,7 +519,7 @@ def generate_book(
             hd = _get_hole_render_data(
                 18, holes_geo, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
-                status_callback=status_callback,
+                status_callback=status_callback, compute_slots=False,
             )
             if hd:
                 top_svg = render_hole_page(

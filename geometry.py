@@ -115,19 +115,22 @@ def project_ring(
     ]
 
 
-def project_course(holes: dict, scale_data: dict) -> dict:
-    """Project all hole geometry from lat/lon to pixel coordinates.
+def project_course(holes: dict, scale_data: dict, only_hole: str | None = None) -> dict:
+    """Project hole geometry from lat/lon to pixel coordinates.
 
     Returns a new dict with the same structure as holes but with pixel
     coordinates instead of lat/lon.
 
     scale_data must contain 'pixels_per_yard'.
+    If only_hole is provided, only that hole key is projected.
     """
     pixels_per_yard = float(scale_data["pixels_per_yard"])
 
     # Collect all lat/lon points to find course centroid for projection origin
     all_lats, all_lons = [], []
-    for hole_data in holes.values():
+    for hole_key, hole_data in holes.items():
+        if only_hole is not None and hole_key != only_hole:
+            continue
         for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths", "contours"):
             for ring in hole_data.get(feature_type, []):
                 for pt in ring:
@@ -136,6 +139,22 @@ def project_course(holes: dict, scale_data: dict) -> dict:
         for pt in hole_data.get("tee_boxes", {}).values():
             all_lats.append(pt[0])
             all_lons.append(pt[1])
+
+    # Also collect all points for centroid when projecting only one hole,
+    # since the centroid needs the full course extent to produce consistent
+    # pixel coordinates across all holes.
+    if only_hole is not None:
+        for hole_key, hole_data in holes.items():
+            if hole_key == only_hole:
+                continue
+            for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths", "contours"):
+                for ring in hole_data.get(feature_type, []):
+                    for pt in ring:
+                        all_lats.append(pt[0])
+                        all_lons.append(pt[1])
+            for pt in hole_data.get("tee_boxes", {}).values():
+                all_lats.append(pt[0])
+                all_lons.append(pt[1])
 
     if not all_lats:
         return holes
@@ -150,7 +169,8 @@ def project_course(holes: dict, scale_data: dict) -> dict:
     yards_per_degree_lon = metres_per_degree_lon * 1.09361
 
     projected = {}
-    for hole_num, hole_data in holes.items():
+    target_holes = {only_hole: holes[only_hole]} if only_hole is not None else holes
+    for hole_num, hole_data in target_holes.items():
         ph: dict[str, Any] = {}
 
         for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths", "contours"):
