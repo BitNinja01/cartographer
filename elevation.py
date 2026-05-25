@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from affine import Affine
+from PIL import Image
 import rasterio
 from rasterio.crs import CRS
 from rasterio.warp import transform as warp_transform
@@ -137,6 +139,75 @@ def _connect_segments(
         if len(line) >= 2:
             polylines.append(np.array(line))
     return polylines
+
+
+def _gaussian_blur(z: np.ndarray, sigma: float = 0.7) -> np.ndarray:
+    """Apply Gaussian blur to a 2D array using separable convolution.
+    
+    NaN values are filled with the array mean before blurring and
+    restored afterward. Small sigma values (0.5–1.0) reduce 1‑cell
+    DEM noise while preserving real elevation features.
+    """
+    if sigma <= 0 or z.size == 0:
+        return z
+    radius = int(3 * sigma + 0.5)
+    if radius < 1:
+        return z
+
+    x = np.arange(-radius, radius + 1, dtype=float)
+    kernel = np.exp(-0.5 * (x / sigma) ** 2)
+    kernel /= kernel.sum()
+
+    mask = np.isnan(z)
+    if mask.any():
+        fill = np.nanmean(z)
+        work = np.where(mask, fill, z)
+    else:
+        work = z
+
+    # Pad with edge values, convolve, crop back to original shape
+    padded = np.pad(work, pad_width=radius, mode="edge")
+    blurred = np.apply_along_axis(
+        lambda v: np.convolve(v, kernel, mode="valid"), axis=1,
+        arr=padded,
+    )
+    blurred = np.apply_along_axis(
+        lambda v: np.convolve(v, kernel, mode="valid"), axis=0,
+        arr=blurred,
+    )
+    return np.where(mask, np.nan, blurred)
+
+
+def _upsample_dem(
+    z: np.ndarray,
+    transform: Affine,
+    factor: int = 4,
+) -> tuple[np.ndarray, Affine]:
+    """Upsample DEM grid by *factor* (bilinear) and return adjusted transform."""
+    if factor <= 1:
+        return z, transform
+    ny, nx = z.shape
+    fill = np.nanmean(z) if np.isnan(z).any() else 0.0
+    z_filled = np.where(np.isnan(z), fill, z)
+    z_filled = np.ascontiguousarray(z_filled.astype(np.float32))
+    img = Image.fromarray(z_filled, mode="F")
+    img_big = img.resize((nx * factor, ny * factor), Image.BILINEAR)
+    z_big = np.array(img_big, dtype=np.float64).reshape(ny * factor, nx * factor)
+    transform_big = Affine(
+        transform.a / factor, transform.b / factor, transform.c,
+        transform.d / factor, transform.e / factor, transform.f,
+    )
+    return z_big, transform_big
+
+
+def _upsample_mask(mask: np.ndarray, factor: int = 4) -> np.ndarray:
+    """Upsample boolean mask by *factor* (nearest‑neighbour)."""
+    if factor <= 1:
+        return mask
+    ny, nx = mask.shape
+    img = Image.fromarray((mask.astype(np.uint8) * 255), mode="L")
+    img_big = img.resize((nx * factor, ny * factor), Image.NEAREST)
+    return np.array(img_big, dtype=bool)
 
 
 def get_course_dem(course_name: str, holes_geo: dict) -> Path | None:
@@ -322,16 +393,50 @@ def _contour_paths_to_wgs84(
         return paths
 
 
+def _in_green_mask(
+    x_2d: np.ndarray, y_2d: np.ndarray,
+    z: np.ndarray,
+    green_ring: list[list[float]],
+    src_crs: CRS,
+) -> np.ndarray | None:
+    """Return boolean mask of DEM cells whose centres fall inside the green polygon."""
+    from shapely import prepared
+    from shapely.geometry import Polygon, Point
+
+    xs, ys = _ring_to_crs(green_ring, src_crs)
+    green_poly = Polygon(list(zip(xs, ys)))
+    prepped = prepared.prep(green_poly)
+
+    ny, nx = z.shape
+    mask = np.zeros_like(z, dtype=bool)
+    for j in range(ny):
+        for i in range(nx):
+            if not np.isnan(z[j, i]):
+                if prepped.contains(Point(x_2d[j, i], y_2d[j, i])):
+                    mask[j, i] = True
+    return mask if mask.any() else None
+
+
 def compute_green_contours(
     green_ring: list[list[float]],
     dem_path: Path,
-    contour_interval: float = 1.0,
-    num_index: int = 5,
+    max_contours: int = 8,
+    num_index: int = 2,
 ) -> dict | None:
     """Compute contour paths for a single green.
 
+    Only the green's own elevation range is used for normalisation (auto‑levels),
+    so subtle topography on flat greens gets the full 0‑1 contour space.
+    Contour paths are smoothed downstream via Chaikin smoothing.
+
+    Args:
+        green_ring: [lat, lon] vertices of the green polygon.
+        dem_path: Path to cached 1m GeoTIFF.
+        max_contours: Maximum contour levels (default 8).
+        num_index: Every Nth contour is an index (bold) level (default 2).
+
     Returns dict with keys 'index' and 'intermediate', each a list of
-    {"path": [[lon, lat], ...], "z": float}.
+    {"path": [[lat, lon], ...], "z": float}.
     Returns None if DEM data is insufficient.
     """
     sampled = sample_green_elevation(green_ring, dem_path)
@@ -343,39 +448,111 @@ def compute_green_contours(
     if np.all(np.isnan(z)):
         return None
 
-    z_min, z_max = np.nanmin(z), np.nanmax(z)
-    if z_max - z_min < 0.5:
+    # Get DEM CRS
+    with rasterio.open(dem_path) as src:
+        src_crs = src.crs
+
+    # Auto-levels: compute z_min/z_max from in-green cells only
+    # Falls back to full-window range if no cells intersect (test data edge case).
+    green_mask = _in_green_mask(x_2d, y_2d, z, green_ring, src_crs)
+    if green_mask is not None:
+        z_green = z[green_mask]
+        z_min, z_max = np.nanmin(z_green), np.nanmax(z_green)
+    else:
+        z_min, z_max = np.nanmin(z), np.nanmax(z)
+    if z_max - z_min < 0.25:
         return None
 
-    base = math.floor(z_min / contour_interval) * contour_interval
-    levels = []
-    v = base
-    while v <= z_max + 0.001:
-        levels.append(round(v, 2))
-        v += contour_interval
+    elevation_range = z_max - z_min
+    num_contours = max(2, min(max_contours, int(elevation_range / 0.2)))
 
-    index_set = {lvl for i, lvl in enumerate(levels) if i % num_index == 0}
+    # Upsample DEM (4x) for smoother contour paths, then blur to suppress
+    # interpolation faceting that marching squares would trace as noise.
+    z, win_transform = _upsample_dem(z, win_transform, factor=4)
+    if green_mask is not None:
+        green_mask_big = _upsample_mask(green_mask, factor=4)
+    else:
+        green_mask_big = None
+    z = _gaussian_blur(z, sigma=1.5)
 
-    raw = compute_contours(z, levels)
+    # Recompute in-green min/max after upscale+blur for accurate normalisation
+    if green_mask_big is not None:
+        z_green_big = z[green_mask_big]
+        z_min, z_max = np.nanmin(z_green_big), np.nanmax(z_green_big)
+
+    z_norm = np.clip((z - z_min) / (z_max - z_min), 0.0, 1.0)
+
+    levels = [i / (num_contours + 1) for i in range(1, num_contours + 1)]
+    index_set = {levels[i] for i in range(0, len(levels), num_index)}
+
+    raw = compute_contours(z_norm, levels)
     if not raw:
+        return None
+
+    result: dict[str, list[dict]] = {"index": [], "intermediate": []}
+    z_min_f, z_max_f = float(z_min), float(z_max)
+    for norm_level, grid_paths in raw.items():
+        actual_z = z_min_f + float(norm_level) * (z_max_f - z_min_f)
+        crs_paths = _grid_paths_to_crs(grid_paths, win_transform)
+        wgs84_paths = _contour_paths_to_wgs84(crs_paths, src_crs)
+        tag = "index" if norm_level in index_set else "intermediate"
+        for path_array in wgs84_paths:
+            if len(path_array) >= 2:
+                result[tag].append({
+                    "path": [[float(x), float(y)] for x, y in path_array],
+                    "z": round(actual_z, 1),
+                })
+
+    return result
+
+
+def compute_elevation_shading(
+    green_ring: list[list[float]],
+    dem_path: Path,
+) -> Image.Image | None:
+    """Compute a grayscale elevation-shading image for a green.
+
+    Returns a PIL.Image (mode='L', uint8, 4x upscaled + blurred)
+    or None if DEM data is insufficient or range < 0.25m.
+    White = highest elevation, black = lowest.
+    """
+    sampled = sample_green_elevation(green_ring, dem_path)
+    if sampled is None:
+        return None
+
+    x_2d, y_2d, z, win_transform = sampled
+
+    if np.all(np.isnan(z)):
         return None
 
     with rasterio.open(dem_path) as src:
         src_crs = src.crs
 
-    result: dict[str, list[dict]] = {"index": [], "intermediate": []}
-    for level, grid_paths in raw.items():
-        crs_paths = _grid_paths_to_crs(grid_paths, win_transform)
-        wgs84_paths = _contour_paths_to_wgs84(crs_paths, src_crs)
-        tag = "index" if level in index_set else "intermediate"
-        for path_array in wgs84_paths:
-            if len(path_array) >= 2:
-                result[tag].append({
-                    "path": [[float(x), float(y)] for x, y in path_array],
-                    "z": round(level, 1),
-                })
+    green_mask = _in_green_mask(x_2d, y_2d, z, green_ring, src_crs)
+    if green_mask is not None:
+        z_green = z[green_mask]
+        z_min, z_max = np.nanmin(z_green), np.nanmax(z_green)
+    else:
+        return None
 
-    return result
+    if z_max - z_min < 0.25:
+        return None
+
+    z, _ = _upsample_dem(z, win_transform, factor=4)
+    if green_mask is not None:
+        green_mask_big = _upsample_mask(green_mask, factor=4)
+    else:
+        green_mask_big = None
+    z = _gaussian_blur(z, sigma=1.5)
+
+    if green_mask_big is not None:
+        z_green_big = z[green_mask_big]
+        z_min, z_max = np.nanmin(z_green_big), np.nanmax(z_green_big)
+
+    z_norm = np.clip((z - z_min) / (z_max - z_min), 0.0, 1.0)
+    z_uint8 = (z_norm * 255).astype(np.uint8)
+
+    return Image.fromarray(z_uint8, mode="L")
 
 
 def compute_all_green_contours(course_name: str, holes_geo: dict) -> dict:
@@ -397,10 +574,10 @@ def compute_all_green_contours(course_name: str, holes_geo: dict) -> dict:
 
     result: dict[str, dict] = {}
     for hole_key, geom in holes_geo.items():
-        green = geom.get("green", [])
-        if not green:
+        greens = geom.get("green", [])
+        if not greens:
             continue
-        contours = compute_green_contours(green, dem_path)
+        contours = compute_green_contours(greens[0], dem_path)
         if contours is not None:
             result[hole_key] = contours
 

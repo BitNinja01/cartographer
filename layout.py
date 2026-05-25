@@ -7,7 +7,10 @@ Produces a single 4.25" x 14" SVG page containing:
 """
 from __future__ import annotations
 
+import base64
 import io
+
+import cairosvg
 import svgwrite
 
 # Page dimensions in SVG points (72 points per inch)
@@ -47,6 +50,12 @@ _CHAR_WIDTH_RATIO = 0.80    # tuned to cairosvg/Pango rendering — proportional
                             # at 12pt for 11 chars → 0.756/char; 0.80 adds safety margin)
 _ASCENDER_RATIO   = 1.02    # sTypoAscender / upm
 _DESCENDER_RATIO  = 0.30    # abs(sTypoDescender) / upm
+
+
+def _svg_to_png_data_uri(svg_str: str) -> str:
+    png_bytes = cairosvg.svg2png(bytestring=svg_str.encode("utf-8"))
+    b64 = base64.b64encode(png_bytes).decode("ascii")
+    return f"data:image/png;base64,{b64}"
 
 
 def _text_width(text: str, font_size: float) -> float:
@@ -143,7 +152,7 @@ def flip_page_svg(svg_str: str, w: float, h: float) -> str:
     dwg = svgwrite.Drawing(size=(f"{w}pt", f"{h}pt"), viewBox=f"0 0 {w} {h}")
     g = dwg.g(transform=f"rotate(180, {w / 2}, {h / 2})")
     g.add(dwg.image(
-        href="data:image/svg+xml," + svg_str.replace("#", "%23"),
+        href=_svg_to_png_data_uri(svg_str),
         insert=(0, 0),
         size=(w, h),
     ))
@@ -161,13 +170,13 @@ def compose_sheet(top_svg: str, bottom_svg: str) -> str:
     dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, PAGE_H), fill="white"))
 
     dwg.add(dwg.image(
-        href="data:image/svg+xml," + top_svg.replace("#", "%23"),
+        href=_svg_to_png_data_uri(top_svg),
         insert=(0, MARGIN),
         size=(PAGE_W, PAGE_CONTENT_H),
     ))
 
     dwg.add(dwg.image(
-        href="data:image/svg+xml," + bottom_svg.replace("#", "%23"),
+        href=_svg_to_png_data_uri(bottom_svg),
         insert=(0, PAGE_H / 2),
         size=(PAGE_W, PAGE_CONTENT_H),
     ))
@@ -191,7 +200,7 @@ def render_hole_page(
     )
 
     dwg.add(dwg.image(
-        href="data:image/svg+xml," + hole_svg.replace("#", "%23"),
+        href=_svg_to_png_data_uri(hole_svg),
         insert=(MARGIN, 0),
         size=(PRINTABLE_W, PAGE_CONTENT_H),
     ))
@@ -336,12 +345,11 @@ def _render_slot(
 ) -> None:
     """Render a single slot (green grid, stats panel, or notes)."""
     if content_type == "green_grid":
-        # Embed pre-rendered green SVG
         if svg_content:
             dwg.add(dwg.image(
-                href="data:image/svg+xml," + svg_content.replace("#", "%23"),
+                href=_svg_to_png_data_uri(svg_content),
                 insert=(x + width / 2 - height / 2, y),
-                size=(height, height),  # square, centered
+                size=(height, height),
             ))
 
     elif content_type == "stats_panel":
@@ -625,7 +633,7 @@ def compose_back_page(
     if full_course_svg:
         overview_h = PAGE_CONTENT_H - 4 * MARGIN - 24
         dwg.add(dwg.image(
-            href="data:image/svg+xml," + full_course_svg.replace("#", "%23"),
+            href=_svg_to_png_data_uri(full_course_svg),
             insert=(MARGIN, MARGIN),
             size=(PRINTABLE_W, overview_h),
         ))

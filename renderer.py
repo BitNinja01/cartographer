@@ -167,9 +167,9 @@ def render_green(
     rotation_deg: float | None = None,
     canvas_w: float | None = None,
     canvas_h: float | None = None,
-    contour_data: dict | None = None,
+    shading_data: dict | None = None,
 ) -> str:
-    """Render a green detail SVG with contour paths or grid overlay.
+    """Render a green detail SVG with elevation shading.
 
     green_geom: a hole geometry dict (only 'green' key is used).
     canvas_size: fallback square canvas size if canvas_w/canvas_h not provided.
@@ -177,13 +177,9 @@ def render_green(
     canvas_h: explicit canvas height; defaults to canvas_size.
     fitted: if True, green rings are already fitted — skip fit_hole().
     rotation_deg: rotation angle to use when fitting green-only geometry.
-        If None and fitted=False, computed from the green geometry (which
-        may not match the full hole orientation). Pass the rotation from
-        the full hole to make the green grid match the hole layout.
-    contour_data: optional dict with 'index' and 'intermediate' contour paths.
-        When provided, drawn instead of the ruled grid.
+    shading_data: optional dict with 'png_bytes', 'svg_corners', 'green_ring'.
+        When provided, drawn instead of the ruled grid or contours.
     """
-    # ch is the square fitting region; cw is the full slot width for horizontal line extension
     ch = canvas_h if canvas_h is not None else canvas_size
     cw = canvas_w if canvas_w is not None else canvas_size
 
@@ -191,8 +187,8 @@ def render_green(
         size=(f"{cw}pt", f"{ch}pt"),
         viewBox=f"0 0 {cw} {ch}",
     )
+    dwg.add(dwg.rect(insert=(0, 0), size=(cw, ch), fill="white"))
 
-    # Green is fitted to a ch×ch square, then centered horizontally in the cw-wide canvas
     x_offset = (cw - ch) / 2
 
     if fitted:
@@ -208,12 +204,24 @@ def render_green(
 
     stroke_col, fill_col = _COLOURS["green"]
     g = dwg.g(transform=f"translate({x_offset}, 0)")
-    _draw_polygons(dwg, g, raw.get("green", []), stroke=stroke_col, fill=fill_col)
-    dwg.add(g)
-
-    if contour_data is not None:
-        _draw_contours(dwg, contour_data, x_offset)
+    if shading_data is not None:
+        _draw_polygons(dwg, g, raw.get("green", []), stroke="none", fill="white")
+        green_ring = raw.get("green", [])
+        if green_ring:
+            _draw_elevation_shading(
+                dwg, g,
+                png_bytes=shading_data["png_bytes"],
+                bbox=shading_data["bbox"],
+                green_ring=green_ring[0],
+                rotate_angle=shading_data.get("rotate_angle", 0.0),
+                rotate_cx=shading_data.get("rotate_cx", 0.0),
+                rotate_cy=shading_data.get("rotate_cy", 0.0),
+            )
+        _draw_polygons(dwg, g, raw.get("green", []), stroke=stroke_col, fill="none")
     else:
+        _draw_polygons(dwg, g, raw.get("green", []), stroke=stroke_col, fill=fill_col)
+    dwg.add(g)
+    if shading_data is None:
         _draw_green_grid(dwg, ch, cw, x_offset)
 
     return dwg.tostring()
@@ -231,13 +239,6 @@ def _draw_contours(
             continue
         d = "M " + " ".join(f"{p[0] + x_offset},{p[1]}" for p in pts)
         dwg.add(dwg.path(d=d, stroke="#000000", stroke_width=0.5, fill="none"))
-        mid = len(pts) // 2
-        dwg.add(dwg.text(
-            str(entry["z"]),
-            insert=(pts[mid][0] + x_offset + 1, pts[mid][1] - 1),
-            font_family="JetBrainsMono Nerd Font",
-            font_size=4, fill="#000000", font_weight="bold",
-        ))
 
     for entry in contour_data.get("intermediate", []):
         pts = entry["path"]
@@ -245,6 +246,55 @@ def _draw_contours(
             continue
         d = "M " + " ".join(f"{p[0] + x_offset},{p[1]}" for p in pts)
         dwg.add(dwg.path(d=d, stroke="#000000", stroke_width=0.25, fill="none"))
+
+
+def _draw_elevation_shading(
+    dwg: svgwrite.Drawing,
+    group: svgwrite.container.Group,
+    png_bytes: bytes,
+    bbox: tuple[float, float, float, float],
+    green_ring: list[list[float]],
+    rotate_angle: float = 0.0,
+    rotate_cx: float = 0.0,
+    rotate_cy: float = 0.0,
+) -> None:
+    """Draw elevation shading as an SVG <image> clipped to the green polygon.
+
+    png_bytes: PNG bytes of the grayscale shading image (unrotated, covers
+        the projected geographic bounding box).
+    bbox: (min_x, min_y, max_x, max_y) of the projected geographic bbox
+        in SVG space — not the fitted polygon bbox.
+    green_ring: fitted green polygon vertices — used for clipPath.
+    rotate_angle: rotation angle (degrees) matching fit_hole so the
+        shading aligns with the green.
+    rotate_cx, rotate_cy: rotation centre in SVG space (green centroid).
+    """
+    import base64
+
+    if len(green_ring) < 3:
+        return
+
+    bx, by, bx2, by2 = bbox
+    bw, bh = bx2 - bx, by2 - by
+    if bw <= 0 or bh <= 0:
+        return
+
+    clip_id = f"green-clip-{id(png_bytes)}"
+    defs = dwg.defs
+    clip = defs.add(dwg.clipPath(id=clip_id))
+    pts = [(float(x), float(y)) for x, y in green_ring]
+    clip.add(dwg.polygon(points=pts))
+
+    b64 = base64.b64encode(png_bytes).decode("ascii")
+    data_uri = f"data:image/png;base64,{b64}"
+
+    outer = group.add(dwg.g(clip_path=f"url(#{clip_id})"))
+    inner = outer.add(dwg.g(transform=f"rotate({rotate_angle}, {rotate_cx}, {rotate_cy})"))
+    inner.add(dwg.image(
+        href=data_uri,
+        insert=(bx, by),
+        size=(bw, bh),
+    ))
 
 
 def _draw_green_grid(
