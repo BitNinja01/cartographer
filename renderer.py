@@ -160,8 +160,16 @@ def render_hole(
     return dwg.tostring()
 
 
-def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = False, rotation_deg: float | None = None, canvas_w: float | None = None, canvas_h: float | None = None) -> str:
-    """Render a green detail SVG with a grid overlay.
+def render_green(
+    green_geom: dict,
+    canvas_size: float = 200.0,
+    fitted: bool = False,
+    rotation_deg: float | None = None,
+    canvas_w: float | None = None,
+    canvas_h: float | None = None,
+    contour_data: dict | None = None,
+) -> str:
+    """Render a green detail SVG with contour paths or grid overlay.
 
     green_geom: a hole geometry dict (only 'green' key is used).
     canvas_size: fallback square canvas size if canvas_w/canvas_h not provided.
@@ -172,6 +180,8 @@ def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = Fa
         If None and fitted=False, computed from the green geometry (which
         may not match the full hole orientation). Pass the rotation from
         the full hole to make the green grid match the hole layout.
+    contour_data: optional dict with 'index' and 'intermediate' contour paths.
+        When provided, drawn instead of the ruled grid.
     """
     # ch is the square fitting region; cw is the full slot width for horizontal line extension
     ch = canvas_h if canvas_h is not None else canvas_size
@@ -201,21 +211,61 @@ def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = Fa
     _draw_polygons(dwg, g, raw.get("green", []), stroke=stroke_col, fill=fill_col)
     dwg.add(g)
 
-    # Grid overlay:
-    # - Vertical lines: spaced and positioned within the centered square region
-    # - Horizontal lines: extend full slot width (cw) edge to edge
+    if contour_data is not None:
+        _draw_contours(dwg, contour_data, x_offset)
+    else:
+        _draw_green_grid(dwg, ch, cw, x_offset)
+
+    return dwg.tostring()
+
+
+def _draw_contours(
+    dwg: svgwrite.Drawing,
+    contour_data: dict,
+    x_offset: float,
+) -> None:
+    """Draw contour paths over the green (replaces ruled grid)."""
+    for entry in contour_data.get("index", []):
+        pts = entry["path"]
+        if len(pts) < 2:
+            continue
+        d = "M " + " ".join(f"{p[0] + x_offset},{p[1]}" for p in pts)
+        dwg.add(dwg.path(d=d, stroke="#000000", stroke_width=0.5, fill="none"))
+        mid = len(pts) // 2
+        dwg.add(dwg.text(
+            str(entry["z"]),
+            insert=(pts[mid][0] + x_offset + 1, pts[mid][1] - 1),
+            font_family="JetBrainsMono Nerd Font",
+            font_size=4, fill="#000000", font_weight="bold",
+        ))
+
+    for entry in contour_data.get("intermediate", []):
+        pts = entry["path"]
+        if len(pts) < 2:
+            continue
+        d = "M " + " ".join(f"{p[0] + x_offset},{p[1]}" for p in pts)
+        dwg.add(dwg.path(d=d, stroke="#000000", stroke_width=0.25, fill="none"))
+
+
+def _draw_green_grid(
+    dwg: svgwrite.Drawing,
+    ch: float,
+    cw: float,
+    x_offset: float,
+) -> None:
+    """Original 6x6 ruled green grid (fallback)."""
     grid_step = ch / 6
     for i in range(1, 6):
         dwg.add(dwg.line(
-            start=(x_offset + i * grid_step, 0), end=(x_offset + i * grid_step, ch),
+            start=(x_offset + i * grid_step, 0),
+            end=(x_offset + i * grid_step, ch),
             stroke="#000000", stroke_width=0.3,
         ))
         dwg.add(dwg.line(
-            start=(0, i * grid_step), end=(cw, i * grid_step),
+            start=(0, i * grid_step),
+            end=(cw, i * grid_step),
             stroke="#000000", stroke_width=0.3,
         ))
-
-    return dwg.tostring()
 
 
 def render_hole_svg(course_name: str, hole_number: int, settings: dict | None = None) -> str:
