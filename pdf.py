@@ -132,6 +132,7 @@ def generate_book(
     show_calculated_stats: bool = True,
     settings: dict | None = None,
     progress_callback: callable = None,
+    status_callback: callable = None,
 ) -> None:
     """Generate a complete yardage book for a course.
 
@@ -142,6 +143,7 @@ def generate_book(
     show_calculated_stats: if False, stat boxes render as blank (labels + underlines)
     settings: plugin settings dict.
     progress_callback: optional function(current_page, total_pages) for progress updates
+    status_callback: optional function(message) for status text updates
     """
     if settings is None:
         settings = {}
@@ -226,6 +228,8 @@ def generate_book(
     # Pre-compute green contour paths from 1m LiDAR DEM.
     # Inject lat/lon contour paths into holes_geo so they flow through
     # the same project_course() → fit_hole() pipeline as the green.
+    if status_callback:
+        status_callback("Downloading elevation data...")
     green_contours = compute_all_green_contours(course_name, holes_geo)
     for hk, contour_data in green_contours.items():
         if hk not in holes_geo:

@@ -211,6 +211,9 @@ class PDFExportScreen(Screen):
                 msg = f"Combining booklet {current - 20}/5..."
             self.app.call_from_thread(self._update_status, msg)
 
+        def status_callback(msg: str) -> None:
+            self.app.call_from_thread(self._update_status, msg)
+
         try:
             # TODO: Pass self.selected_tees as a tees filter once generate_book supports it
             generate_book(
@@ -224,6 +227,7 @@ class PDFExportScreen(Screen):
                     "cartographer.yardage_arc_distances": settings.get("cartographer.yardage_arc_distances", [100, 125, 150]),
                 },
                 progress_callback=progress_callback,
+                status_callback=status_callback,
             )
             self.app.call_from_thread(self._update_status, f"PDF generated: {self.output_dir}")
             self.app.call_from_thread(self._on_success)
