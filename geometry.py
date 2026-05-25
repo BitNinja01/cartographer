@@ -128,7 +128,7 @@ def project_course(holes: dict, scale_data: dict) -> dict:
     # Collect all lat/lon points to find course centroid for projection origin
     all_lats, all_lons = [], []
     for hole_data in holes.values():
-        for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths"):
+        for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths", "contours"):
             for ring in hole_data.get(feature_type, []):
                 for pt in ring:
                     all_lats.append(pt[0])
@@ -153,7 +153,7 @@ def project_course(holes: dict, scale_data: dict) -> dict:
     for hole_num, hole_data in holes.items():
         ph: dict[str, Any] = {}
 
-        for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths"):
+        for feature_type in ("fairway", "green", "bunkers", "water", "waterways", "rough_boundary", "paths", "contours"):
             rings = hole_data.get(feature_type, [])
             ph[feature_type] = [
                 project_ring(ring, origin_lat, origin_lon,
