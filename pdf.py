@@ -237,30 +237,24 @@ def _get_hole_render_data(
                         buf = _io.BytesIO()
                         img_resized.save(buf, format="PNG")
 
-                        contour_render_scale = 2
                         if contour_cache is not None and hole_num in contour_cache:
                             contour_paths = contour_cache[hole_num]
                         else:
                             if status_callback:
                                 status_callback(f"Extracting & connecting contour lines...")
-                            img_contour = shading_img.resize(
-                                (max(1, int(svg_bw * contour_render_scale)),
-                                 max(1, int(svg_bh * contour_render_scale))),
-                                Image.LANCZOS,
-                            )
-                            z_arr = np.array(img_contour, dtype=float)
+                            z_arr = np.array(img_resized, dtype=float)
                             contour_levels = [i * 255.0 / 13 for i in range(1, 13)]
                             raw_contours = compute_contours(z_arr, contour_levels)
                             contour_paths = []
                             for level in sorted(raw_contours):
                                 for polyline in raw_contours[level]:
-                                    path = [[svg_bx + float(p[0]) / contour_render_scale,
-                                             svg_by + float(p[1]) / contour_render_scale]
+                                    path = [[svg_bx + float(p[0]),
+                                             svg_by + float(p[1])]
                                             for p in polyline]
                                     if len(path) >= 2:
                                         path_tuples = [(p[0], p[1]) for p in path]
-                                        decimated = path_tuples[::33]
-                                        if len(path_tuples) > 1 and decimated[-1] != path_tuples[-1]:
+                                        decimated = path_tuples[::15]
+                                        if decimated[-1] != path_tuples[-1]:
                                             decimated.append(path_tuples[-1])
                                         smoothed = chaikin_smooth_open(decimated, iterations=3)
                                         contour_paths.append([[x, y] for x, y in smoothed])
