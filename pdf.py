@@ -82,6 +82,7 @@ def _get_hole_render_data(
     slot2_mode: str,
     dem_path: Path | None = None,
     contour_cache: dict[int, list] | None = None,
+    status_callback: callable = None,
 ) -> dict | None:
     """Render a single hole and return raw data for page composition.
 
@@ -174,6 +175,8 @@ def _get_hole_render_data(
         if dem_path is not None and greens:
             orig_greens = holes_geo[hole_key].get("green", [])
             if orig_greens:
+                if status_callback and (contour_cache is None or hole_num not in contour_cache):
+                    status_callback(f"Computing elevation shading for hole {hole_num}...")
                 shading_img = compute_elevation_shading(orig_greens[0], dem_path)
                 if shading_img is not None:
                     # Compute projected geographic bbox (unrotated)
@@ -208,6 +211,8 @@ def _get_hole_render_data(
                         if contour_cache is not None and hole_num in contour_cache:
                             contour_paths = contour_cache[hole_num]
                         else:
+                            if status_callback:
+                                status_callback(f"Extracting & connecting contour lines...")
                             img_contour = shading_img.resize(
                                 (max(1, int(svg_bw * contour_render_scale)),
                                  max(1, int(svg_bh * contour_render_scale))),
@@ -224,10 +229,15 @@ def _get_hole_render_data(
                                             for p in polyline]
                                     if len(path) >= 2:
                                         path_tuples = [(p[0], p[1]) for p in path]
-                                        smoothed = chaikin_smooth_open(path_tuples, iterations=3)
+                                        decimated = path_tuples[::33]
+                                        if len(path_tuples) > 1 and decimated[-1] != path_tuples[-1]:
+                                            decimated.append(path_tuples[-1])
+                                        smoothed = chaikin_smooth_open(decimated, iterations=3)
                                         contour_paths.append([[x, y] for x, y in smoothed])
                             if contour_cache is not None:
                                 contour_cache[hole_num] = contour_paths
+                            if status_callback:
+                                status_callback(f"Generating sheet for hole {hole_num}...")
 
                         shading_data = {
                             "png_bytes": buf.getvalue(),
@@ -391,10 +401,12 @@ def generate_book(
             top_hd = _get_hole_render_data(
                 top_hole, holes_geo, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
+                status_callback=status_callback,
             )
             bottom_hd = _get_hole_render_data(
                 bottom_hole, holes_geo, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
+                status_callback=status_callback,
             )
             if top_hd:
                 top_svg = render_hole_page(
@@ -422,6 +434,7 @@ def generate_book(
             hd = _get_hole_render_data(
                 18, holes_geo, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
+                status_callback=status_callback,
             )
             if hd:
                 bottom_svg = render_bottom_slots(
@@ -444,10 +457,12 @@ def generate_book(
             top_hd = _get_hole_render_data(
                 top_hole, holes_geo, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
+                status_callback=status_callback,
             )
             bottom_hd = _get_hole_render_data(
                 bottom_hole, holes_geo, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
+                status_callback=status_callback,
             )
             if top_hd:
                 top_svg = render_hole_page(
@@ -474,6 +489,7 @@ def generate_book(
             hd = _get_hole_render_data(
                 18, holes_geo, scale_data, settings, course_ps,
                 slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
+                status_callback=status_callback,
             )
             if hd:
                 top_svg = render_hole_page(

@@ -92,6 +92,7 @@ class PDFExportScreen(Screen):
                 )
 
             yield Static("", id="status-widget")
+            yield Static("", id="status-detail")
             yield LoadingIndicator(id="loading-indicator")
         yield Footer()
 
@@ -212,7 +213,7 @@ class PDFExportScreen(Screen):
             self.app.call_from_thread(self._update_status, msg)
 
         def status_callback(msg: str) -> None:
-            self.app.call_from_thread(self._update_status, msg)
+            self.app.call_from_thread(self._update_status_detail, msg)
 
         try:
             # TODO: Pass self.selected_tees as a tees filter once generate_book supports it
@@ -269,10 +270,15 @@ class PDFExportScreen(Screen):
         self._on_complete()
 
     def _update_status(self, message: str) -> None:
-        """Update status widget from main thread."""
+        """Update primary status widget from main thread."""
         status = self.query_one("#status-widget", Static)
         status.remove_class("status-error")
         status.update(message)
+
+    def _update_status_detail(self, message: str) -> None:
+        """Update granular status widget from main thread."""
+        detail = self.query_one("#status-detail", Static)
+        detail.update(message)
 
     def _show_error(self, message: str) -> None:
         """Show error in status widget and push error modal."""

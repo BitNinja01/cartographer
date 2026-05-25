@@ -116,29 +116,138 @@ def _connect_segments(
 ) -> list[np.ndarray]:
     if not segments:
         return []
+
+    _EPSILON = 0.5
+
+    grid: dict[tuple[int, int], list[tuple[float, float]]] = {}
+
+    def _grid_cell(pt: tuple[float, float]) -> tuple[int, int]:
+        return (int(pt[0] / _EPSILON), int(pt[1] / _EPSILON))
+
+    def _canonical(pt: tuple[float, float]) -> tuple[float, float]:
+        gx, gy = _grid_cell(pt)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for candidate in grid.get((gx + dx, gy + dy), []):
+                    if abs(candidate[0] - pt[0]) < _EPSILON and abs(candidate[1] - pt[1]) < _EPSILON:
+                        return candidate
+        grid.setdefault((gx, gy), []).append(pt)
+        return pt
+
     adj: dict[tuple[float, float], list[tuple[float, float]]] = {}
     for a, b in segments:
-        adj.setdefault(a, []).append(b)
-        adj.setdefault(b, []).append(a)
-    used: set[tuple[float, float]] = set()
-    polylines: list[np.ndarray] = []
-    for start, _ in segments:
-        if start in used:
+        ca, cb = _canonical(a), _canonical(b)
+        if ca == cb:
             continue
-        line = [start]
-        used.add(start)
+        adj.setdefault(ca, []).append(cb)
+        adj.setdefault(cb, []).append(ca)
+
+    walked: set[frozenset[tuple[float, float]]] = set()
+    polylines: list[np.ndarray] = []
+
+    def _edge(a: tuple[float, float], b: tuple[float, float]) -> frozenset[tuple[float, float]]:
+        return frozenset({a, b})
+
+    def trace_from(start: tuple[float, float]) -> list[tuple[float, float]]:
+        path = [start]
         current = start
         while True:
-            neighbors = [n for n in adj.get(current, []) if n not in used]
-            if not neighbors:
+            candidates = [
+                n for n in adj.get(current, [])
+                if _edge(current, n) not in walked
+            ]
+            if not candidates:
                 break
-            next_pt = neighbors[0]
-            line.append(next_pt)
-            used.add(next_pt)
+            next_pt = candidates[0]
+            walked.add(_edge(current, next_pt))
+            path.append(next_pt)
             current = next_pt
-        if len(line) >= 2:
-            polylines.append(np.array(line))
-    return polylines
+        return path
+
+    all_vertices = set(adj.keys())
+
+    endpoints = sorted(v for v in all_vertices if len(adj.get(v, [])) == 1)
+    for ep in endpoints:
+        if any(_edge(ep, n) not in walked for n in adj.get(ep, [])):
+            line = trace_from(ep)
+            if len(line) >= 2:
+                polylines.append(np.array(line))
+
+    for v in sorted(all_vertices):
+        if any(_edge(v, n) not in walked for n in adj.get(v, [])):
+            line = trace_from(v)
+            if len(line) >= 2:
+                polylines.append(np.array(line))
+
+    return _merge_nearby_polylines(polylines)
+
+
+def _merge_nearby_polylines(
+    polylines: list[np.ndarray],
+    merge_dist: float = 20.0,
+) -> list[np.ndarray]:
+    """Merge polylines whose endpoints are within merge_dist pixels.
+
+    Connects fragments across small image gaps — consolidates without
+    discarding any contour data.
+    """
+    if len(polylines) <= 1:
+        return polylines
+
+    working = [pl.copy() for pl in polylines]
+
+    changed = True
+    while changed:
+        changed = False
+        n = len(working)
+
+        # Spatial index of endpoints: grid_cell -> [(poly_idx, endpoint_idx)]
+        ep_grid: dict[tuple[int, int], list[tuple[int, int]]] = {}
+        for pi, pl in enumerate(working):
+            for ei in (0, -1):
+                pt = pl[ei]
+                cell = (int(pt[0] / merge_dist), int(pt[1] / merge_dist))
+                ep_grid.setdefault(cell, []).append((pi, ei))
+
+        # Find closest endpoint pair from different polylines
+        best_dist = merge_dist
+        best_pair = None
+        for pi, pl in enumerate(working):
+            for ei in (0, -1):
+                pt = pl[ei]
+                gx, gy = int(pt[0] / merge_dist), int(pt[1] / merge_dist)
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        for pj, ej in ep_grid.get((gx + dx, gy + dy), []):
+                            if pj <= pi:
+                                continue
+                            other = working[pj][ej]
+                            d = float(np.sqrt(
+                                (pt[0] - other[0]) ** 2 + (pt[1] - other[1]) ** 2
+                            ))
+                            if d < best_dist:
+                                best_dist = d
+                                best_pair = (pi, ei, pj, ej)
+
+        if best_pair is not None:
+            pi, ei, pj, ej = best_pair
+            pla = working[pi]
+            plb = working[pj]
+
+            if ei == -1 and ej == 0:
+                merged_pts = np.concatenate([pla, plb])
+            elif ei == 0 and ej == -1:
+                merged_pts = np.concatenate([plb, pla])
+            elif ei == 0 and ej == 0:
+                merged_pts = np.concatenate([pla[::-1], plb])
+            else:
+                merged_pts = np.concatenate([pla, plb[::-1]])
+
+            working[pi] = merged_pts
+            working.pop(pj)
+            changed = True
+
+    return working
 
 
 def _gaussian_blur(z: np.ndarray, sigma: float = 0.7) -> np.ndarray:
