@@ -181,9 +181,9 @@ def _search_tnm(bounds: tuple[float, float, float, float]) -> str | None:
     """Query USGS TNM API for 1m DEM download URL covering the bounds."""
     min_lon, min_lat, max_lon, max_lat = bounds
     params = {
-        "datasets": "Elevation 3DEP 1m",
         "bbox": f"{min_lon},{min_lat},{max_lon},{max_lat}",
-        "prodExtents": "1m DEM",
+        "prodFormats": "GeoTIFF",
+        "max": 200,
         "returnGeometry": "false",
         "outputFormat": "JSON",
     }
@@ -194,6 +194,8 @@ def _search_tnm(bounds: tuple[float, float, float, float]) -> str | None:
         )
         resp.raise_for_status()
         for item in resp.json().get("items", []):
+            if "1 Meter" not in item.get("title", ""):
+                continue
             for key in ("downloadURL", "url", "URL"):
                 url = item.get(key)
                 if url and url.lower().endswith(".tif"):
