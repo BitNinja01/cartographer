@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import requests
 
 
 def compute_contours(
@@ -133,3 +134,80 @@ def _connect_segments(
         if len(line) >= 2:
             polylines.append(np.array(line))
     return polylines
+
+
+def get_course_dem(course_name: str, holes_geo: dict) -> Path | None:
+    """Download/cache the 1m DEM covering all green bounding boxes.
+    Returns path to cached GeoTIFF or None if unavailable."""
+    from cartographer.data import get_dem_path
+
+    cache_path = get_dem_path(course_name)
+    if cache_path.exists():
+        return cache_path
+
+    bounds = _course_green_bounds(holes_geo)
+    if bounds is None:
+        return None
+
+    url = _search_tnm(bounds)
+    if url is None:
+        return None
+
+    _download_file(url, cache_path)
+    return cache_path if cache_path.exists() else None
+
+
+def _course_green_bounds(holes_geo: dict) -> tuple[float, float, float, float] | None:
+    """(min_lon, min_lat, max_lon, max_lat) across all green polygons."""
+    min_lat, max_lat = 90.0, -90.0
+    min_lon, max_lon = 180.0, -180.0
+    found = False
+    for geom in holes_geo.values():
+        for ring in geom.get("green", []):
+            for pt in ring:
+                lon, lat = pt[0], pt[1]
+                min_lat = min(min_lat, lat)
+                max_lat = max(max_lat, lat)
+                min_lon = min(min_lon, lon)
+                max_lon = max(max_lon, lon)
+                found = True
+    return (min_lon, min_lat, max_lon, max_lat) if found else None
+
+
+def _search_tnm(bounds: tuple[float, float, float, float]) -> str | None:
+    """Query USGS TNM API for 1m DEM download URL covering the bounds."""
+    min_lon, min_lat, max_lon, max_lat = bounds
+    params = {
+        "datasets": "Elevation 3DEP 1m",
+        "bbox": f"{min_lon},{min_lat},{max_lon},{max_lat}",
+        "prodExtents": "1m DEM",
+        "returnGeometry": "false",
+        "outputFormat": "JSON",
+    }
+    try:
+        resp = requests.get(
+            "https://tnmaccess.nationalmap.gov/api/v1/products",
+            params=params, timeout=30,
+        )
+        resp.raise_for_status()
+        for item in resp.json().get("items", []):
+            for key in ("downloadURL", "url", "URL"):
+                url = item.get(key)
+                if url and url.lower().endswith(".tif"):
+                    return url
+        return None
+    except requests.RequestException:
+        return None
+
+
+def _download_file(url: str, dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        resp = requests.get(url, stream=True, timeout=120)
+        resp.raise_for_status()
+        with open(dest, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=8192):
+                f.write(chunk)
+    except requests.RequestException:
+        if dest.exists():
+            dest.unlink()

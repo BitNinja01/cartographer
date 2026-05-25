@@ -58,3 +58,29 @@ def test_multiple_levels():
     assert 2.0 in contours
     assert 5.0 in contours
     assert 8.0 in contours
+
+
+def test_dem_cached():
+    """When DEM is cached, no network request is made."""
+    from unittest.mock import MagicMock, patch
+    from pathlib import Path
+    from cartographer.elevation import get_course_dem
+
+    holes = {"1": {"green": [[[-122.3, 47.6], [-122.3, 47.61], [-122.29, 47.61], [-122.29, 47.6]]]}}
+    with patch("cartographer.data.get_dem_path") as mock_path:
+        mock_path.return_value = MagicMock(spec=Path)
+        mock_path.return_value.exists.return_value = True
+        with patch("cartographer.elevation.requests.get") as mock_get:
+            result = get_course_dem("test", holes)
+            assert result is not None
+            mock_get.assert_not_called()
+
+
+def test_dem_no_greens():
+    """No greens -> no DEM needed, returns None."""
+    from unittest.mock import patch
+    from cartographer.elevation import get_course_dem
+
+    with patch("cartographer.elevation.requests.get") as mock_get:
+        assert get_course_dem("test", {}) is None
+        mock_get.assert_not_called()
