@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import rasterio
+from rasterio.crs import CRS
+from rasterio.warp import transform as warp_transform
 import requests
 
 
@@ -211,3 +214,193 @@ def _download_file(url: str, dest: Path) -> None:
     except requests.RequestException:
         if dest.exists():
             dest.unlink()
+
+
+def sample_green_elevation(
+    green_ring: list[list[float]],
+    dem_path: Path,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, Any] | None:
+    """Extract elevation grid within a green polygon.
+
+    Args:
+        green_ring: List of [lon, lat] vertices.
+        dem_path: Path to cached 1m GeoTIFF.
+
+    Returns:
+        (x_2d, y_2d, z_2d, win_transform) where x/y are 2D meshgrid arrays
+        in DEM CRS coordinates, z is elevation, win_transform is the
+        rasterio Affine for the window. Returns None on failure.
+    """
+    try:
+        with rasterio.open(dem_path) as src:
+            xs, ys = _ring_to_crs(green_ring, src.crs)
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+
+            window = rasterio.windows.from_bounds(
+                min_x, min_y, max_x, max_y, src.transform
+            )
+            z = src.read(1, window=window, masked=True)
+            z_data = z.filled(np.nan)
+
+            win_transform = src.window_transform(window)
+            nx, ny = z_data.shape[1], z_data.shape[0]
+
+            x_1d = np.linspace(
+                win_transform.c,
+                win_transform.c + win_transform.a * nx,
+                nx,
+            )
+            y_1d = np.linspace(
+                win_transform.f,
+                win_transform.f + win_transform.e * ny,
+                ny,
+            )
+            x_2d, y_2d = np.meshgrid(x_1d, y_1d, indexing="xy")
+            return x_2d, y_2d, z_data, win_transform
+    except Exception:
+        return None
+
+
+def _ring_to_crs(
+    ring: list[list[float]], target_crs: CRS,
+) -> tuple[list[float], list[float]]:
+    lons = [pt[0] for pt in ring]
+    lats = [pt[1] for pt in ring]
+    xs, ys = warp_transform(CRS.from_epsg(4326), target_crs, lons, lats)
+    return list(xs), list(ys)
+
+
+def _grid_paths_to_crs(
+    paths: list[np.ndarray],
+    transform: Any,
+) -> list[np.ndarray]:
+    """Convert contour paths from grid-cell indices to DEM CRS coordinates."""
+    a, b, c, d, e, f = (transform.a, transform.b, transform.c,
+                         transform.d, transform.e, transform.f)
+    result = []
+    for path in paths:
+        if len(path) == 0:
+            continue
+        xs = c + path[:, 0] * a + path[:, 1] * b
+        ys = f + path[:, 0] * d + path[:, 1] * e
+        result.append(np.column_stack([xs, ys]))
+    return result
+
+
+def _contour_paths_to_wgs84(
+    paths: list[np.ndarray],
+    src_crs: CRS,
+) -> list[np.ndarray]:
+    if not paths:
+        return []
+    try:
+        result = []
+        for path in paths:
+            if len(path) == 0:
+                continue
+            xs, ys = warp_transform(
+                src_crs, CRS.from_epsg(4326),
+                path[:, 0].tolist(), path[:, 1].tolist(),
+            )
+            result.append(np.column_stack([np.array(xs), np.array(ys)]))
+        return result
+    except Exception:
+        return paths
+
+
+def compute_green_contours(
+    green_ring: list[list[float]],
+    dem_path: Path,
+    contour_interval: float = 1.0,
+    num_index: int = 5,
+) -> dict | None:
+    """Compute contour paths for a single green.
+
+    Returns dict with keys 'index' and 'intermediate', each a list of
+    {"path": [[lon, lat], ...], "z": float}.
+    Returns None if DEM data is insufficient.
+    """
+    sampled = sample_green_elevation(green_ring, dem_path)
+    if sampled is None:
+        return None
+
+    x_2d, y_2d, z, win_transform = sampled
+
+    if np.all(np.isnan(z)):
+        return None
+
+    z_min, z_max = np.nanmin(z), np.nanmax(z)
+    if z_max - z_min < 0.5:
+        return None
+
+    base = math.floor(z_min / contour_interval) * contour_interval
+    levels = []
+    v = base
+    while v <= z_max + 0.001:
+        levels.append(round(v, 2))
+        v += contour_interval
+
+    index_set = {lvl for i, lvl in enumerate(levels) if i % num_index == 0}
+
+    raw = compute_contours(z, levels)
+    if not raw:
+        return None
+
+    with rasterio.open(dem_path) as src:
+        src_crs = src.crs
+
+    result: dict[str, list[dict]] = {"index": [], "intermediate": []}
+    for level, grid_paths in raw.items():
+        crs_paths = _grid_paths_to_crs(grid_paths, win_transform)
+        wgs84_paths = _contour_paths_to_wgs84(crs_paths, src_crs)
+        tag = "index" if level in index_set else "intermediate"
+        for path_array in wgs84_paths:
+            if len(path_array) >= 2:
+                result[tag].append({
+                    "path": [[float(x), float(y)] for x, y in path_array],
+                    "z": round(level, 1),
+                })
+
+    return result
+
+
+def compute_all_green_contours(course_name: str, holes_geo: dict) -> dict:
+    """Compute and cache green contours for all holes in a course.
+
+    Returns {hole_num: {"index": [...], "intermediate": [...]}}
+    or empty dict if DEM is unavailable.
+    """
+    from cartographer.data import get_contours_cache_path
+    import json
+
+    cache_path = get_contours_cache_path(course_name)
+    if cache_path.exists():
+        return json.loads(cache_path.read_text())
+
+    dem_path = get_course_dem(course_name, holes_geo)
+    if dem_path is None:
+        return {}
+
+    result: dict[str, dict] = {}
+    for hole_key, geom in holes_geo.items():
+        green = geom.get("green", [])
+        if not green:
+            continue
+        contours = compute_green_contours(green, dem_path)
+        if contours is not None:
+            result[hole_key] = contours
+
+    cache_path.write_text(json.dumps(result))
+    return result
+
+
+def load_contours_cache(course_name: str) -> dict:
+    """Load cached contours. Returns {} on cache miss."""
+    from cartographer.data import get_contours_cache_path
+    import json
+
+    path = get_contours_cache_path(course_name)
+    if path.exists():
+        return json.loads(path.read_text())
+    return {}

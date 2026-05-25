@@ -1,6 +1,8 @@
 """Tests for elevation data and contour computation."""
+from pathlib import Path
+
 import numpy as np
-from cartographer.elevation import compute_contours
+from cartographer.elevation import compute_contours, load_contours_cache, sample_green_elevation
 
 
 def test_simple_ridge():
@@ -84,3 +86,14 @@ def test_dem_no_greens():
     with patch("cartographer.elevation.requests.get") as mock_get:
         assert get_course_dem("test", {}) is None
         mock_get.assert_not_called()
+
+
+def test_sample_missing_dem():
+    """Non-existent DEM returns None."""
+    ring = [[-122.3, 47.6], [-122.3, 47.61], [-122.29, 47.61], [-122.29, 47.6]]
+    assert sample_green_elevation(ring, Path("/nonexistent/dem.tif")) is None
+
+
+def test_load_contours_cache_miss():
+    """Non-existent cache returns empty dict."""
+    assert load_contours_cache("nonexistent") == {}
