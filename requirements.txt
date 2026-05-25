@@ -6,3 +6,4 @@ lxml
 flask
 pypdf
 rasterio
+scikit-image
