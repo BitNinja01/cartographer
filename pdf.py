@@ -20,6 +20,7 @@ from cartographer.geometry import (
     compute_pixels_per_yard_from_geometry,
 )
 from cartographer.renderer import render_hole, render_green, render_course_overview
+from cartographer.elevation import compute_all_green_contours
 from cartographer.layout import (
     compose_sheet, compose_front_page, compose_back_page, compose_chart_page,
     compose_notes_page, render_hole_page, render_bottom_slots,
@@ -44,6 +45,7 @@ def _get_hole_render_data(
     course_ps: dict,
     slot1_mode: str,
     slot2_mode: str,
+    all_contours: dict | None = None,
 ) -> dict | None:
     """Render a single hole and return raw data for page composition.
 
@@ -66,8 +68,33 @@ def _get_hole_render_data(
     if not hole_geom:
         return None
 
+    # Save projected contours before smoothing strips them
+    contour_projected = hole_geom.pop("contours", None)
+
     hole_geom = smooth_hole_geometry(hole_geom, pixels_per_yard=ppy)
+
+    # Restore projected contours before fitting
+    if contour_projected:
+        hole_geom["contours"] = contour_projected
+
     fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H, left_bias=HOLE_LEFT_BIAS)
+
+    # Extract fitted contour paths and reconstruct dict structure
+    contour_data = None
+    if all_contours and hole_key in all_contours:
+        fitted_rings = fitted.get("contours", [])
+        if fitted_rings:
+            raw = all_contours[hole_key]
+            contour_data = {"index": [], "intermediate": []}
+            idx = 0
+            for cat in ("index", "intermediate"):
+                for entry in raw.get(cat, []):
+                    if idx < len(fitted_rings):
+                        contour_data[cat].append({
+                            "path": fitted_rings[idx],
+                            "z": entry["z"],
+                        })
+                        idx += 1
 
     if settings.get("cartographer.yardage_arcs", True):
         distances = settings.get("cartographer.yardage_arc_distances", [100, 125, 150])
@@ -84,9 +111,9 @@ def _get_hole_render_data(
     slot2_svg = ""
     green_rot = get_green_rotation(hole_geom)
     if slot1_mode == "green_grid":
-        slot1_svg = render_green({"green": hole_geom.get("green", [])}, canvas_w=PAGE_W, canvas_h=SLOT_H, rotation_deg=green_rot)
+        slot1_svg = render_green({"green": hole_geom.get("green", [])}, canvas_w=PAGE_W, canvas_h=SLOT_H, rotation_deg=green_rot, contour_data=contour_data)
     if slot2_mode == "green_grid":
-        slot2_svg = render_green({"green": hole_geom.get("green", [])}, canvas_w=PAGE_W, canvas_h=SLOT_H, rotation_deg=green_rot)
+        slot2_svg = render_green({"green": hole_geom.get("green", [])}, canvas_w=PAGE_W, canvas_h=SLOT_H, rotation_deg=green_rot, contour_data=contour_data)
 
     return {
         "hole_svg": hole_svg,
@@ -196,6 +223,20 @@ def generate_book(
     holes_geo = course_geo.get("holes", {})
     scale_data = course_geo.get("scale", {})
 
+    # Pre-compute green contour paths from 1m LiDAR DEM.
+    # Inject lat/lon contour paths into holes_geo so they flow through
+    # the same project_course() → fit_hole() pipeline as the green.
+    green_contours = compute_all_green_contours(course_name, holes_geo)
+    for hk, contour_data in green_contours.items():
+        if hk not in holes_geo:
+            continue
+        rings = []
+        for cat in ("index", "intermediate"):
+            for entry in contour_data.get(cat, []):
+                rings.append(entry["path"])
+        if rings:
+            holes_geo[hk]["contours"] = rings
+
     safe_course = course_name.lower().replace(" ", "_").replace("'", "").replace('"', "")
 
     # Generate 20 narrow PDFs in cross-paired order
@@ -218,11 +259,11 @@ def generate_book(
             fname = f"{safe_course}_{top_hole}_{bottom_hole}.pdf"
             top_hd = _get_hole_render_data(
                 top_hole, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode,
+                slot1_mode, slot2_mode, all_contours=green_contours,
             )
             bottom_hd = _get_hole_render_data(
                 bottom_hole, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode,
+                slot1_mode, slot2_mode, all_contours=green_contours,
             )
             if top_hd:
                 top_svg = render_hole_page(
@@ -249,7 +290,7 @@ def generate_book(
             chart_svg = compose_chart_page()
             hd = _get_hole_render_data(
                 18, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode,
+                slot1_mode, slot2_mode, all_contours=green_contours,
             )
             if hd:
                 bottom_svg = render_bottom_slots(
@@ -271,11 +312,11 @@ def generate_book(
             fname = f"{safe_course}_{top_hole}_{bottom_hole}.pdf"
             top_hd = _get_hole_render_data(
                 top_hole, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode,
+                slot1_mode, slot2_mode, all_contours=green_contours,
             )
             bottom_hd = _get_hole_render_data(
                 bottom_hole, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode,
+                slot1_mode, slot2_mode, all_contours=green_contours,
             )
             if top_hd:
                 top_svg = render_hole_page(
@@ -301,7 +342,7 @@ def generate_book(
             fname = f"{safe_course}_18_notes.pdf"
             hd = _get_hole_render_data(
                 18, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode,
+                slot1_mode, slot2_mode, all_contours=green_contours,
             )
             if hd:
                 top_svg = render_hole_page(
