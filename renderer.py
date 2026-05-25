@@ -244,27 +244,6 @@ def render_green(
     return dwg.tostring()
 
 
-def _draw_contours(
-    dwg: svgwrite.Drawing,
-    contour_data: dict,
-    x_offset: float,
-) -> None:
-    """Draw contour paths over the green (replaces ruled grid)."""
-    for entry in contour_data.get("index", []):
-        pts = entry["path"]
-        if len(pts) < 2:
-            continue
-        d = "M " + " ".join(f"{p[0] + x_offset},{p[1]}" for p in pts)
-        dwg.add(dwg.path(d=d, stroke="#000000", stroke_width=0.5, fill="none"))
-
-    for entry in contour_data.get("intermediate", []):
-        pts = entry["path"]
-        if len(pts) < 2:
-            continue
-        d = "M " + " ".join(f"{p[0] + x_offset},{p[1]}" for p in pts)
-        dwg.add(dwg.path(d=d, stroke="#000000", stroke_width=0.25, fill="none"))
-
-
 def _draw_elevation_shading(
     dwg: svgwrite.Drawing,
     group: svgwrite.container.Group,

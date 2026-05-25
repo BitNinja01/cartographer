@@ -130,11 +130,10 @@ def test_adaptive_contour_small_range():
         mock_rio.return_value.__enter__.return_value = mock_src
         result = compute_green_contours(green_ring, Path("/fake.tif"))
 
-        assert result is not None
+        assert "contours" in result
         all_z = set()
-        for entries in result.values():
-            for e in entries:
-                all_z.add(e["z"])
+        for e in result["contours"]:
+            all_z.add(e["z"])
         # 0.5m/0.2m = 2.5 -> int=2 -> max(2, min(8, 2)) = 2 contours
         assert len(all_z) == 2, f"Expected 2 contour levels, got {len(all_z)}: {sorted(all_z)}"
 
@@ -168,11 +167,10 @@ def test_adaptive_contour_large_range():
         mock_rio.return_value.__enter__.return_value = mock_src
         result = compute_green_contours(green_ring, Path("/fake.tif"))
 
-        assert result is not None
+        assert "contours" in result
         all_z = set()
-        for entries in result.values():
-            for e in entries:
-                all_z.add(e["z"])
+        for e in result["contours"]:
+            all_z.add(e["z"])
         # 5.0m/0.2 = 25 -> int=25 -> max(2, min(8, 25)) = 8 contours
         assert len(all_z) == 8, f"Expected 8 contour levels, got {len(all_z)}: {sorted(all_z)}"
 
@@ -206,11 +204,10 @@ def test_adaptive_contour_min_clamp():
         mock_rio.return_value.__enter__.return_value = mock_src
         result = compute_green_contours(green_ring, Path("/fake.tif"))
 
-        assert result is not None
+        assert "contours" in result
         all_z = set()
-        for entries in result.values():
-            for e in entries:
-                all_z.add(e["z"])
+        for e in result["contours"]:
+            all_z.add(e["z"])
         # 0.3m/0.2 = 1.5 -> int=1 -> max(2, min(8, 1)) = 2 contours (minimum)
         assert len(all_z) == 2, f"Expected 2 contour levels, got {len(all_z)}: {sorted(all_z)}"
 
@@ -242,7 +239,7 @@ def test_adaptive_contour_flat():
         mock_src.crs = CRS.from_epsg(4326)
         mock_rio.return_value.__enter__.return_value = mock_src
         result = compute_green_contours(green_ring, Path("/fake.tif"))
-        assert result is None
+        assert result == {"contours": []}
 
 
 def test_gaussian_blur_preserves_mean():

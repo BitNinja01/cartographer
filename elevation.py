@@ -1,7 +1,6 @@
 """Elevation data access and green contour computation."""
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import Any
 
@@ -17,12 +16,14 @@ import requests
 def compute_contours(
     z: np.ndarray,
     levels: list[float],
+    merge_dist: float = 20.0,
 ) -> dict[float, list[np.ndarray]]:
     """Marching squares: extract contour polylines from a 2D elevation grid.
 
     Args:
         z: 2D array (ny, nx) of elevation values.
         levels: Contour z-values to extract.
+        merge_dist: Max distance (in grid cells) for polyline endpoint merging.
 
     Returns:
         {level: [polyline, ...]} where each polyline is an (N, 2) array
@@ -30,13 +31,13 @@ def compute_contours(
     """
     result: dict[float, list[np.ndarray]] = {}
     for level in levels:
-        polylines = _marching_squares_level(z, level)
+        polylines = _marching_squares_level(z, level, merge_dist)
         if polylines:
             result[level] = polylines
     return result
 
 
-def _marching_squares_level(z: np.ndarray, level: float) -> list[np.ndarray]:
+def _marching_squares_level(z: np.ndarray, level: float, merge_dist: float = 20.0) -> list[np.ndarray]:
     ny, nx = z.shape
     segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
 
@@ -65,7 +66,7 @@ def _marching_squares_level(z: np.ndarray, level: float) -> list[np.ndarray]:
             if len(pts) >= 2:
                 segments.append((pts[0], pts[1]))
 
-    return _connect_segments(segments)
+    return _connect_segments(segments, merge_dist)
 
 
 def _edge_intersections(
@@ -113,11 +114,12 @@ _CELL_EDGES: list[tuple[int, int] | None] = [
 
 def _connect_segments(
     segments: list[tuple[tuple[float, float], tuple[float, float]]],
+    merge_dist: float = 20.0,
 ) -> list[np.ndarray]:
     if not segments:
         return []
 
-    _EPSILON = 0.5
+    _EPSILON = 1e-6
 
     grid: dict[tuple[int, int], list[tuple[float, float]]] = {}
 
@@ -179,7 +181,7 @@ def _connect_segments(
             if len(line) >= 2:
                 polylines.append(np.array(line))
 
-    return _merge_nearby_polylines(polylines)
+    return _merge_nearby_polylines(polylines, merge_dist)
 
 
 def _merge_nearby_polylines(
@@ -191,7 +193,7 @@ def _merge_nearby_polylines(
     Connects fragments across small image gaps — consolidates without
     discarding any contour data.
     """
-    if len(polylines) <= 1:
+    if len(polylines) <= 1 or merge_dist <= 0.0:
         return polylines
 
     working = [pl.copy() for pl in polylines]
@@ -201,7 +203,6 @@ def _merge_nearby_polylines(
         changed = False
         n = len(working)
 
-        # Spatial index of endpoints: grid_cell -> [(poly_idx, endpoint_idx)]
         ep_grid: dict[tuple[int, int], list[tuple[int, int]]] = {}
         for pi, pl in enumerate(working):
             for ei in (0, -1):
@@ -209,7 +210,6 @@ def _merge_nearby_polylines(
                 cell = (int(pt[0] / merge_dist), int(pt[1] / merge_dist))
                 ep_grid.setdefault(cell, []).append((pi, ei))
 
-        # Find closest endpoint pair from different polylines
         best_dist = merge_dist
         best_pair = None
         for pi, pl in enumerate(working):
@@ -530,8 +530,7 @@ def compute_green_contours(
     green_ring: list[list[float]],
     dem_path: Path,
     max_contours: int = 8,
-    num_index: int = 2,
-) -> dict | None:
+) -> dict:
     """Compute contour paths for a single green.
 
     Only the green's own elevation range is used for normalisation (auto‑levels),
@@ -542,20 +541,18 @@ def compute_green_contours(
         green_ring: [lat, lon] vertices of the green polygon.
         dem_path: Path to cached 1m GeoTIFF.
         max_contours: Maximum contour levels (default 8).
-        num_index: Every Nth contour is an index (bold) level (default 2).
 
-    Returns dict with keys 'index' and 'intermediate', each a list of
-    {"path": [[lat, lon], ...], "z": float}.
-    Returns None if DEM data is insufficient.
+    Returns {"contours": [{"path": [[lat, lon], ...], "z": float}, ...]}
+    or {"contours": []} if DEM data is insufficient.
     """
     sampled = sample_green_elevation(green_ring, dem_path)
     if sampled is None:
-        return None
+        return {"contours": []}
 
     x_2d, y_2d, z, win_transform = sampled
 
     if np.all(np.isnan(z)):
-        return None
+        return {"contours": []}
 
     # Get DEM CRS
     with rasterio.open(dem_path) as src:
@@ -570,7 +567,7 @@ def compute_green_contours(
     else:
         z_min, z_max = np.nanmin(z), np.nanmax(z)
     if z_max - z_min < 0.10:
-        return None
+        return {"contours": []}
 
     elevation_range = z_max - z_min
     num_contours = max(2, min(max_contours, int(elevation_range / 0.2)))
@@ -584,7 +581,6 @@ def compute_green_contours(
         green_mask_big = None
     z = _gaussian_blur(z, sigma=1.5)
 
-    # Recompute in-green min/max after upscale+blur for accurate normalisation
     if green_mask_big is not None:
         z_green_big = z[green_mask_big]
         z_min, z_max = np.nanmin(z_green_big), np.nanmax(z_green_big)
@@ -592,27 +588,25 @@ def compute_green_contours(
     z_norm = np.clip((z - z_min) / (z_max - z_min), 0.0, 1.0)
 
     levels = [i / (num_contours + 1) for i in range(1, num_contours + 1)]
-    index_set = {levels[i] for i in range(0, len(levels), num_index)}
 
-    raw = compute_contours(z_norm, levels)
+    raw = compute_contours(z_norm, levels, merge_dist=1.0)
     if not raw:
-        return None
+        return {"contours": []}
 
-    result: dict[str, list[dict]] = {"index": [], "intermediate": []}
+    result: list[dict] = []
     z_min_f, z_max_f = float(z_min), float(z_max)
     for norm_level, grid_paths in raw.items():
         actual_z = z_min_f + float(norm_level) * (z_max_f - z_min_f)
         crs_paths = _grid_paths_to_crs(grid_paths, win_transform)
         wgs84_paths = _contour_paths_to_wgs84(crs_paths, src_crs)
-        tag = "index" if norm_level in index_set else "intermediate"
         for path_array in wgs84_paths:
             if len(path_array) >= 2:
-                result[tag].append({
+                result.append({
                     "path": [[float(x), float(y)] for x, y in path_array],
                     "z": round(actual_z, 1),
                 })
 
-    return result
+    return {"contours": result}
 
 
 def compute_elevation_shading(
@@ -667,7 +661,7 @@ def compute_elevation_shading(
 def compute_all_green_contours(course_name: str, holes_geo: dict) -> dict:
     """Compute and cache green contours for all holes in a course.
 
-    Returns {hole_num: {"index": [...], "intermediate": [...]}}
+    Returns {hole_num: {"contours": [{"path": [[lat, lon], ...], "z": ...}, ...]}}
     or empty dict if DEM is unavailable.
     """
     from cartographer.data import get_contours_cache_path
@@ -687,7 +681,7 @@ def compute_all_green_contours(course_name: str, holes_geo: dict) -> dict:
         if not greens:
             continue
         contours = compute_green_contours(greens[0], dem_path)
-        if contours is not None:
+        if contours.get("contours"):
             result[hole_key] = contours
 
     cache_path.write_text(json.dumps(result))
