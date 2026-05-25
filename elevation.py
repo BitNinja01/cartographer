@@ -161,14 +161,17 @@ def get_course_dem(course_name: str, holes_geo: dict) -> Path | None:
 
 
 def _course_green_bounds(holes_geo: dict) -> tuple[float, float, float, float] | None:
-    """(min_lon, min_lat, max_lon, max_lat) across all green polygons."""
+    """(min_lon, min_lat, max_lon, max_lat) across all green polygons.
+    
+    Data is stored as [lat, lon] per OSM convention.
+    """
     min_lat, max_lat = 90.0, -90.0
     min_lon, max_lon = 180.0, -180.0
     found = False
     for geom in holes_geo.values():
         for ring in geom.get("green", []):
             for pt in ring:
-                lon, lat = pt[0], pt[1]
+                lat, lon = pt[0], pt[1]
                 min_lat = min(min_lat, lat)
                 max_lat = max(max_lat, lat)
                 min_lon = min(min_lon, lon)
@@ -267,8 +270,12 @@ def sample_green_elevation(
 def _ring_to_crs(
     ring: list[list[float]], target_crs: CRS,
 ) -> tuple[list[float], list[float]]:
-    lons = [pt[0] for pt in ring]
-    lats = [pt[1] for pt in ring]
+    """Convert ring from [lat, lon] (OSM convention) to target CRS coordinates.
+
+    rasterio.warp.transform expects source coords as (xs, ys) = (lon, lat).
+    """
+    lats = [pt[0] for pt in ring]
+    lons = [pt[1] for pt in ring]
     xs, ys = warp_transform(CRS.from_epsg(4326), target_crs, lons, lats)
     return list(xs), list(ys)
 
@@ -294,6 +301,10 @@ def _contour_paths_to_wgs84(
     paths: list[np.ndarray],
     src_crs: CRS,
 ) -> list[np.ndarray]:
+    """Transform contour paths from DEM CRS to WGS84 [lat, lon] (OSM convention).
+
+    rasterio.warp.transform returns (xs, ys) = (lon, lat) for EPSG:4326.
+    """
     if not paths:
         return []
     try:
@@ -305,7 +316,7 @@ def _contour_paths_to_wgs84(
                 src_crs, CRS.from_epsg(4326),
                 path[:, 0].tolist(), path[:, 1].tolist(),
             )
-            result.append(np.column_stack([np.array(xs), np.array(ys)]))
+            result.append(np.column_stack([np.array(ys), np.array(xs)]))
         return result
     except Exception:
         return paths
