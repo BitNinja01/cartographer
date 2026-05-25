@@ -81,6 +81,7 @@ def _get_hole_render_data(
     slot1_mode: str,
     slot2_mode: str,
     dem_path: Path | None = None,
+    contour_cache: dict[int, list] | None = None,
 ) -> dict | None:
     """Render a single hole and return raw data for page composition.
 
@@ -102,6 +103,11 @@ def _get_hole_render_data(
     hole_geom = projected.get(hole_key, {})
     if not hole_geom:
         return None
+
+    slot_context_features: dict[str, list] = {
+        ft: list(hole_geom.get(ft, []))
+        for ft in ("fairway", "water", "bunkers", "rough_boundary", "paths")
+    }
 
     hole_geom = smooth_hole_geometry(hole_geom, pixels_per_yard=ppy)
 
@@ -148,15 +154,15 @@ def _get_hole_render_data(
                 return [rx * slot_scale + off_x, ry * slot_scale + off_y]
 
             for feature_type in ("fairway", "water", "bunkers", "rough_boundary"):
-                rings = hole_geom.get(feature_type, [])
+                rings = slot_context_features.get(feature_type, [])
                 fitted_rings = []
                 for ring in rings:
                     fitted = [_fit_point(x, y) for x, y in ring]
-                    fitted_rings.append(chaikin_smooth(fitted))
+                    fitted_rings.append(chaikin_smooth(fitted, iterations=1))
                 slot_fitted[feature_type] = fitted_rings
 
             fitted_paths = []
-            for line in hole_geom.get("paths", []):
+            for line in slot_context_features.get("paths", []):
                 fitted_paths.append([_fit_point(x, y) for x, y in line])
             slot_fitted["paths"] = fitted_paths
 
@@ -198,18 +204,30 @@ def _get_hole_render_data(
                         buf = _io.BytesIO()
                         img_resized.save(buf, format="PNG")
 
-                        z_arr = np.array(img_resized, dtype=float)
-                        contour_levels = [i * 255.0 / 13 for i in range(1, 13)]
-                        raw_contours = compute_contours(z_arr, contour_levels)
-                        contour_paths = []
-                        for level in sorted(raw_contours):
-                            for polyline in raw_contours[level]:
-                                path = [[svg_bx + float(p[0]), svg_by + float(p[1])]
-                                        for p in polyline]
-                                if len(path) >= 2:
-                                    path_tuples = [(p[0], p[1]) for p in path]
-                                    smoothed = chaikin_smooth_open(path_tuples, iterations=3)
-                                    contour_paths.append([[x, y] for x, y in smoothed])
+                        contour_render_scale = 2
+                        if contour_cache is not None and hole_num in contour_cache:
+                            contour_paths = contour_cache[hole_num]
+                        else:
+                            img_contour = shading_img.resize(
+                                (max(1, int(svg_bw * contour_render_scale)),
+                                 max(1, int(svg_bh * contour_render_scale))),
+                                Image.LANCZOS,
+                            )
+                            z_arr = np.array(img_contour, dtype=float)
+                            contour_levels = [i * 255.0 / 13 for i in range(1, 13)]
+                            raw_contours = compute_contours(z_arr, contour_levels)
+                            contour_paths = []
+                            for level in sorted(raw_contours):
+                                for polyline in raw_contours[level]:
+                                    path = [[svg_bx + float(p[0]) / contour_render_scale,
+                                             svg_by + float(p[1]) / contour_render_scale]
+                                            for p in polyline]
+                                    if len(path) >= 2:
+                                        path_tuples = [(p[0], p[1]) for p in path]
+                                        smoothed = chaikin_smooth_open(path_tuples, iterations=3)
+                                        contour_paths.append([[x, y] for x, y in smoothed])
+                            if contour_cache is not None:
+                                contour_cache[hole_num] = contour_paths
 
                         shading_data = {
                             "png_bytes": buf.getvalue(),
@@ -358,6 +376,8 @@ def generate_book(
     booklets_dir.mkdir(parents=True, exist_ok=True)
     narrow_pdfs: list[bytes] = []
 
+    contour_cache: dict[int, list] = {}
+
     total_steps = 25  # 20 sheets + 5 booklets
 
     for page_idx in range(0, 20):
@@ -370,11 +390,11 @@ def generate_book(
             fname = f"{safe_course}_{top_hole}_{bottom_hole}.pdf"
             top_hd = _get_hole_render_data(
                 top_hole, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode, dem_path=dem_path,
+                slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
             )
             bottom_hd = _get_hole_render_data(
                 bottom_hole, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode, dem_path=dem_path,
+                slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
             )
             if top_hd:
                 top_svg = render_hole_page(
@@ -401,7 +421,7 @@ def generate_book(
             chart_svg = compose_chart_page()
             hd = _get_hole_render_data(
                 18, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode, dem_path=dem_path,
+                slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
             )
             if hd:
                 bottom_svg = render_bottom_slots(
@@ -423,11 +443,11 @@ def generate_book(
             fname = f"{safe_course}_{top_hole}_{bottom_hole}.pdf"
             top_hd = _get_hole_render_data(
                 top_hole, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode, dem_path=dem_path,
+                slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
             )
             bottom_hd = _get_hole_render_data(
                 bottom_hole, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode, dem_path=dem_path,
+                slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
             )
             if top_hd:
                 top_svg = render_hole_page(
@@ -453,7 +473,7 @@ def generate_book(
             fname = f"{safe_course}_18_notes.pdf"
             hd = _get_hole_render_data(
                 18, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode, dem_path=dem_path,
+                slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
             )
             if hd:
                 top_svg = render_hole_page(
