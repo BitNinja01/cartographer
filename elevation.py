@@ -131,7 +131,7 @@ def _connect_segments(
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
                 for candidate in grid.get((gx + dx, gy + dy), []):
-                    if abs(candidate[0] - pt[0]) < _EPSILON and abs(candidate[1] - pt[1]) < _EPSILON:
+                    if abs(candidate[0] - pt[0]) <= _EPSILON and abs(candidate[1] - pt[1]) <= _EPSILON:
                         return candidate
         grid.setdefault((gx, gy), []).append(pt)
         return pt
