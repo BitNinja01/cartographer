@@ -122,6 +122,10 @@ def _get_hole_render_data(
         gcx, gcy = get_green_centroid(fitted)
         fitted["_arcs"] = compute_yardage_arcs((gcx, gcy), distances, ppy, scale)
 
+    show_heightmap = settings.get("cartographer.green_heightmap", True)
+    show_contours = settings.get("cartographer.green_contours", True)
+    show_arrows = settings.get("cartographer.green_arrows", True)
+
     hole_svg = render_hole(fitted, settings=settings)
 
     hole_ps_data = course_ps.get("holes", {}).get(hole_key, {})
@@ -203,7 +207,8 @@ def _get_hole_render_data(
         # mismatch between geographic bbox and fitted polygon bbox).
         shading_data = None
         greens = slot_fitted.get("green", [])
-        if dem_path is not None and greens:
+        contour_paths = []
+        if dem_path is not None and greens and (show_contours or show_arrows):
             orig_greens = holes_geo[hole_key].get("green", [])
             if orig_greens:
                 if status_callback and (contour_cache is None or hole_num not in contour_cache):
@@ -287,6 +292,9 @@ def _get_hole_render_data(
                             "rotate_cx": gcx,
                             "rotate_cy": gcy,
                             "contour_paths": contour_paths,
+                            "show_heightmap": show_heightmap,
+                            "show_contours": show_contours,
+                            "show_arrows": show_arrows,
                         }
     else:
         slot_fitted = None
