@@ -88,6 +88,34 @@ def _apply_splits(features: list[dict], split_lines: dict) -> list[dict]:
     return features
 
 
+def _expand_split_features(features: list[dict]) -> list[dict]:
+    """Expand split features into sub-features with synthetic IDs.
+
+    Features without _split_pieces pass through unchanged.
+    Features with _split_pieces produce one sub-feature per piece,
+    with osm_id like 'way/123__0', 'way/123__1' and a 'split_group'
+    property linking back to the original osm_id.
+
+    Returns a new flat list (does not mutate input).
+    """
+    result = []
+    for feature in features:
+        pieces = feature.get("_split_pieces")
+        if not pieces:
+            result.append(feature)
+            continue
+
+        for i, piece_coords in enumerate(pieces):
+            sub = dict(feature)
+            sub["osm_id"] = f"{feature['osm_id']}__{i}"
+            sub["geometry"] = piece_coords[0] if len(piece_coords) == 1 else piece_coords[0]
+            sub["split_group"] = feature["osm_id"]
+            sub.pop("_split_pieces", None)
+            result.append(sub)
+
+    return result
+
+
 _STATIC_DIR = Path(__file__).parent / "static"
 
 
