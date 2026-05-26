@@ -240,6 +240,9 @@ def render_green(
                 rotate_cx=shading_data.get("rotate_cx", 0.0),
                 rotate_cy=shading_data.get("rotate_cy", 0.0),
                 contour_paths=shading_data.get("contour_paths"),
+                show_heightmap=shading_data.get("show_heightmap", True),
+                show_contours=shading_data.get("show_contours", True),
+                show_arrows=shading_data.get("show_arrows", False),
             )
         _draw_polygons(dwg, g, raw.get("green", []), stroke=stroke_col, fill="none")
     else:
@@ -347,6 +350,9 @@ def _draw_elevation_shading(
     rotate_cx: float = 0.0,
     rotate_cy: float = 0.0,
     contour_paths: list[list[list[float]]] | None = None,
+    show_heightmap: bool = True,
+    show_contours: bool = True,
+    show_arrows: bool = False,
 ) -> None:
     """Draw elevation shading as an SVG <image> clipped to the green polygon.
 
@@ -380,17 +386,39 @@ def _draw_elevation_shading(
 
     outer = group.add(dwg.g(clip_path=f"url(#{clip_id})"))
     inner = outer.add(dwg.g(transform=f"rotate({rotate_angle}, {rotate_cx}, {rotate_cy})"))
-    inner.add(dwg.image(
-        href=data_uri,
-        insert=(bx, by),
-        size=(bw, bh),
-        opacity="0.5",
-    ))
-    if contour_paths:
+    if show_heightmap:
+        inner.add(dwg.image(
+            href=data_uri,
+            insert=(bx, by),
+            size=(bw, bh),
+            opacity="0.5",
+        ))
+    if show_contours and contour_paths:
         for path in contour_paths:
             if len(path) >= 2:
                 d = "M " + " ".join(f"{p[0]:.2f},{p[1]:.2f}" for p in path)
                 inner.add(dwg.path(d=d, stroke="#000000", stroke_width=_STROKE_WIDTH, fill="none"))
+
+    if show_arrows and contour_paths:
+        arrow_color = _COLOURS["green"][0]
+        arrows = _compute_arrows(png_bytes, bbox, contour_paths)
+        for (cx, cy), (dx, dy) in arrows:
+            tip_x = cx + dx * 4.0
+            tip_y = cy + dy * 4.0
+            inner.add(dwg.line(
+                start=(cx, cy), end=(tip_x, tip_y),
+                stroke=arrow_color, stroke_width=0.7,
+            ))
+            angle = math.atan2(dy, dx)
+            wing_len = 2.0
+            w1_x = tip_x - wing_len * math.cos(angle - math.radians(150))
+            w1_y = tip_y - wing_len * math.sin(angle - math.radians(150))
+            w2_x = tip_x - wing_len * math.cos(angle + math.radians(150))
+            w2_y = tip_y - wing_len * math.sin(angle + math.radians(150))
+            inner.add(dwg.polygon(
+                points=[(tip_x, tip_y), (w1_x, w1_y), (w2_x, w2_y)],
+                fill=arrow_color, stroke="none",
+            ))
 
 
 def _draw_green_grid(
