@@ -79,6 +79,9 @@ class PDFExportScreen(Screen):
                         Vertical(
                             Checkbox("Show calculated stats", value=True, id="stats-checkbox"),
                             Checkbox("Yardage arcs", value=True, id="arcs-checkbox"),
+                            Checkbox("Green: Heightmap", value=True, id="heightmap-checkbox"),
+                            Checkbox("Green: Contours", value=True, id="contours-checkbox"),
+                            Checkbox("Green: Arrows", value=True, id="arrows-checkbox"),
                             Static("Available tees:", id="tees-label"),
                             SelectionList(id="tees-selection"),
                             Static("Output directory:"),
@@ -106,6 +109,9 @@ class PDFExportScreen(Screen):
 
         settings = load_settings()
         self.query_one("#arcs-checkbox", Checkbox).value = settings.get("cartographer.yardage_arcs", True)
+        self.query_one("#heightmap-checkbox", Checkbox).value = settings.get("cartographer.green_heightmap", True)
+        self.query_one("#contours-checkbox", Checkbox).value = settings.get("cartographer.green_contours", True)
+        self.query_one("#arrows-checkbox", Checkbox).value = settings.get("cartographer.green_arrows", True)
 
         if getattr(sys, "frozen", False):
             courses_json = Path(sys.executable).parent / "data" / "courses.json"
@@ -131,6 +137,9 @@ class PDFExportScreen(Screen):
         """Refresh settings state when returning to this screen."""
         settings = load_settings()
         self.query_one("#arcs-checkbox", Checkbox).value = settings.get("cartographer.yardage_arcs", True)
+        self.query_one("#heightmap-checkbox", Checkbox).value = settings.get("cartographer.green_heightmap", True)
+        self.query_one("#contours-checkbox", Checkbox).value = settings.get("cartographer.green_contours", True)
+        self.query_one("#arrows-checkbox", Checkbox).value = settings.get("cartographer.green_arrows", True)
 
     def on_selection_list_selected_changed(self, event: SelectionList.SelectedChanged) -> None:
         """Handle tee selection changes."""
@@ -153,6 +162,21 @@ class PDFExportScreen(Screen):
             data["cartographer.yardage_arcs"] = event.value
             save_settings(data)
             _log.info("setting changed: cartographer.yardage_arcs = %s", event.value)
+        elif event.checkbox.id == "heightmap-checkbox":
+            data = load_settings()
+            data["cartographer.green_heightmap"] = event.value
+            save_settings(data)
+            _log.info("setting changed: cartographer.green_heightmap = %s", event.value)
+        elif event.checkbox.id == "contours-checkbox":
+            data = load_settings()
+            data["cartographer.green_contours"] = event.value
+            save_settings(data)
+            _log.info("setting changed: cartographer.green_contours = %s", event.value)
+        elif event.checkbox.id == "arrows-checkbox":
+            data = load_settings()
+            data["cartographer.green_arrows"] = event.value
+            save_settings(data)
+            _log.info("setting changed: cartographer.green_arrows = %s", event.value)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle generate button press."""
@@ -226,6 +250,9 @@ class PDFExportScreen(Screen):
                 settings={
                     "cartographer.yardage_arcs": settings.get("cartographer.yardage_arcs", True),
                     "cartographer.yardage_arc_distances": settings.get("cartographer.yardage_arc_distances", [100, 125, 150]),
+                    "cartographer.green_heightmap": settings.get("cartographer.green_heightmap", True),
+                    "cartographer.green_contours": settings.get("cartographer.green_contours", True),
+                    "cartographer.green_arrows": settings.get("cartographer.green_arrows", True),
                 },
                 progress_callback=progress_callback,
                 status_callback=status_callback,
