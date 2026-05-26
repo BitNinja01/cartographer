@@ -358,6 +358,29 @@
     .split-line {
       stroke-dasharray: 8 4;
     }
+
+    #btn-undo {
+      background: var(--surface-elevated);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 14px;
+      transition: all 0.15s;
+    }
+
+    #btn-undo:hover:not(:disabled) {
+      background: var(--border);
+      color: var(--fg);
+    }
+
+    #btn-undo:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
   </style>
 </head>
 <body>
@@ -401,7 +424,7 @@
 
   <div id="controls">
     <button id="btn-split-mode">Split Mode</button>
-    <button id="btn-undo" style="display:none;">Undo</button>
+    <button id="btn-undo" disabled>Undo</button>
     <button id="btn-save">Save &amp; Close</button>
   </div>
 </div>
@@ -483,6 +506,10 @@
     splitLineLayers.length = 0;
   }
 
+  function refreshUndoButton() {
+    document.getElementById('btn-undo').disabled = undoStack.length === 0;
+  }
+
   function addSplitLine(p1, p2) {
     fetch('/api/splits', {
       method: 'POST',
@@ -491,7 +518,7 @@
     }).then(r => r.json()).then(data => {
       if (data.split_id) {
         undoStack.push({type: 'split', splitId: data.split_id});
-        document.getElementById('btn-undo').style.display = '';
+        refreshUndoButton();
 
         const line = L.polyline([p1, p2], {
           color: '#e53935', weight: 2, dashArray: '8 4',
@@ -547,7 +574,7 @@
                 undoStack.push({type: 'unassign', id: id, hole: featureAssignments[id]};
                 delete featureAssignments[id];
                 map.addLayer(layer);
-                document.getElementById('btn-undo').style.display = '';
+                refreshUndoButton();
                 renderFeatureList(allFeatures);
                 return;
               }
@@ -555,7 +582,7 @@
                 undoStack.push({type: 'assign', id: id};
                 featureAssignments[id] = currentHole;
                 map.removeLayer(layer);
-                document.getElementById('btn-undo').style.display = '';
+                refreshUndoButton();
                 renderFeatureList(allFeatures);
               }
             });
@@ -624,7 +651,6 @@
 
   document.getElementById('btn-undo').onclick = () => {
     if (undoStack.length === 0) return;
-    const btn = document.getElementById('btn-undo');
     const action = undoStack.pop();
 
     if (action.type === 'split') {
@@ -632,7 +658,7 @@
         .then(r => r.json())
         .then(data => {
           if (data.status === 'ok') {
-            if (undoStack.length === 0) btn.style.display = 'none';
+            refreshUndoButton();
             refreshFeatures();
           }
         });
@@ -640,12 +666,12 @@
       delete featureAssignments[action.id];
       if (layers[action.id]) map.addLayer(layers[action.id]);
       renderFeatureList(allFeatures);
-      if (undoStack.length === 0) btn.style.display = 'none';
+      refreshUndoButton();
     } else if (action.type === 'unassign') {
       featureAssignments[action.id] = action.hole;
       if (layers[action.id]) map.removeLayer(layers[action.id]);
       renderFeatureList(allFeatures);
-      if (undoStack.length === 0) btn.style.display = 'none';
+      refreshUndoButton();
     }
   };
 
@@ -710,7 +736,7 @@
               undoStack.push({type: 'unassign', id: id, hole: featureAssignments[id]};
               delete featureAssignments[id];
               map.addLayer(layer);
-              document.getElementById('btn-undo').style.display = '';
+              refreshUndoButton();
               renderFeatureList(allFeatures);
               return;
             }
@@ -718,7 +744,7 @@
               undoStack.push({type: 'assign', id: id};
               featureAssignments[id] = currentHole;
               map.removeLayer(layer);
-              document.getElementById('btn-undo').style.display = '';
+              refreshUndoButton();
               renderFeatureList(allFeatures);
             }
           });
@@ -769,14 +795,14 @@
             undoStack.push({type: 'unassign', id: id, hole: hole};
             delete featureAssignments[id];
             if (layers[id]) map.addLayer(layers[id]);
-            document.getElementById('btn-undo').style.display = '';
+            refreshUndoButton();
             renderFeatureList(allFeatures);
           } else {
             if (currentHole >= 1 && currentHole <= 18) {
               undoStack.push({type: 'assign', id: id};
               featureAssignments[id] = currentHole;
               if (layers[id]) map.removeLayer(layers[id]);
-              document.getElementById('btn-undo').style.display = '';
+              refreshUndoButton();
               renderFeatureList(allFeatures);
             }
             if (layers[id]) {
