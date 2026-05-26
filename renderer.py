@@ -251,6 +251,92 @@ def render_green(
     return dwg.tostring()
 
 
+def _compute_arrows(
+    png_bytes: bytes,
+    bbox: tuple[float, float, float, float],
+    contour_paths: list[list[list[float]]],
+    spacing: float = 5.0,
+) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    """Compute downhill-direction arrows at sample points along contour polylines.
+
+    Returns a list of ((anchor_x, anchor_y), (dir_x, dir_y)) tuples where
+    (dir_x, dir_y) is a unit-length vector pointing downhill (high -> low).
+
+    The shading image has white=high, black=low. np.gradient returns
+    (dy, dx) pointing from low->high, so we flip the sign.
+
+    spacing: arc-length interval in SVG points between sample arrows.
+    """
+    import numpy as np
+    import io
+    from PIL import Image
+
+    if not contour_paths:
+        return []
+
+    img = Image.open(io.BytesIO(png_bytes))
+    arr = np.array(img.convert("L"), dtype=float)
+    h, w = arr.shape
+    dy_arr, dx_arr = np.gradient(arr)
+
+    bx, by, bx2, by2 = bbox
+    bbox_w = bx2 - bx
+    bbox_h = by2 - by
+    if bbox_w <= 0 or bbox_h <= 0:
+        return []
+
+    arrows: list[tuple[tuple[float, float], tuple[float, float]]] = []
+
+    for path in contour_paths:
+        if len(path) < 3:
+            continue
+
+        cumulative = [0.0]
+        for i in range(1, len(path)):
+            seg_len = math.hypot(
+                path[i][0] - path[i-1][0],
+                path[i][1] - path[i-1][1],
+            )
+            cumulative.append(cumulative[-1] + seg_len)
+
+        total_len = cumulative[-1]
+        if total_len < spacing * 2:
+            continue
+
+        n_samples = max(1, int(total_len / spacing))
+        sample_stops = [i * total_len / n_samples for i in range(n_samples)]
+
+        seg_idx = 0
+        for stop in sample_stops:
+            while seg_idx < len(cumulative) - 1 and cumulative[seg_idx + 1] < stop:
+                seg_idx += 1
+            if seg_idx >= len(path) - 1:
+                break
+
+            seg_start = cumulative[seg_idx]
+            seg_end = cumulative[seg_idx + 1]
+            seg_range = seg_end - seg_start
+            t = (stop - seg_start) / seg_range if seg_range > 0 else 0.0
+            t = max(0.0, min(1.0, t))
+
+            sx = path[seg_idx][0] + t * (path[seg_idx + 1][0] - path[seg_idx][0])
+            sy = path[seg_idx][1] + t * (path[seg_idx + 1][1] - path[seg_idx][1])
+
+            px = (sx - bx) / bbox_w * w
+            py = (sy - by) / bbox_h * h
+            pi = int(round(py))
+            pj = int(round(px))
+
+            if 0 <= pi < h and 0 <= pj < w:
+                gx = dx_arr[pi, pj]
+                gy = dy_arr[pi, pj]
+                mag = math.hypot(gx, gy)
+                if mag > 1e-9:
+                    arrows.append(((sx, sy), (-gx / mag, -gy / mag)))
+
+    return arrows
+
+
 def _draw_elevation_shading(
     dwg: svgwrite.Drawing,
     group: svgwrite.container.Group,
