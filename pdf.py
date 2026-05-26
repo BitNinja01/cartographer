@@ -266,7 +266,14 @@ def _get_hole_render_data(
                                         else:
                                             decimated = path_tuples
                                         smoothed = chaikin_smooth_open(decimated, iterations=3)
-                                        contour_paths.append([[x, y] for x, y in smoothed])
+                                        if len(smoothed) >= 2:
+                                            total_len = sum(
+                                                math.hypot(smoothed[i][0] - smoothed[i-1][0],
+                                                           smoothed[i][1] - smoothed[i-1][1])
+                                                for i in range(1, len(smoothed))
+                                            )
+                                            if total_len >= 30.0:
+                                                contour_paths.append([[x, y] for x, y in smoothed])
                             if contour_cache is not None:
                                 contour_cache[hole_num] = contour_paths
                             if status_callback:
