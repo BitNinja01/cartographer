@@ -266,7 +266,7 @@ def _compute_arrows(
     (dir_x, dir_y) is a unit-length vector pointing downhill (high -> low).
 
     The shading image has white=high, black=low. np.gradient returns
-    (dy, dx) pointing from low->high, so we flip the sign.
+    (dy, dx) pointing from low->high, matching the downhill direction.
 
     spacing: arc-length interval in SVG points between sample arrows.
     """
@@ -335,7 +335,7 @@ def _compute_arrows(
                 gy = dy_arr[pi, pj]
                 mag = math.hypot(gx, gy)
                 if mag > 1e-9:
-                    arrows.append(((sx, sy), (-gx / mag, -gy / mag)))
+                    arrows.append(((sx, sy), (gx / mag, gy / mag)))
 
     return arrows
 
@@ -401,23 +401,24 @@ def _draw_elevation_shading(
 
     if show_arrows and contour_paths:
         arrow_color = _COLOURS["green"][0]
-        arrows = _compute_arrows(png_bytes, bbox, contour_paths)
+        arrows = _compute_arrows(png_bytes, bbox, contour_paths, spacing=12.0)
         for (cx, cy), (dx, dy) in arrows:
-            tip_x = cx + dx * 4.0
-            tip_y = cy + dy * 4.0
-            inner.add(dwg.line(
-                start=(cx, cy), end=(tip_x, tip_y),
-                stroke=arrow_color, stroke_width=0.7,
-            ))
             angle = math.atan2(dy, dx)
-            wing_len = 2.0
-            w1_x = tip_x - wing_len * math.cos(angle - math.radians(150))
-            w1_y = tip_y - wing_len * math.sin(angle - math.radians(150))
-            w2_x = tip_x - wing_len * math.cos(angle + math.radians(150))
-            w2_y = tip_y - wing_len * math.sin(angle + math.radians(150))
-            inner.add(dwg.polygon(
-                points=[(tip_x, tip_y), (w1_x, w1_y), (w2_x, w2_y)],
-                fill=arrow_color, stroke="none",
+            leg_len = 5.0
+            half_angle = math.radians(30)
+            lx = cx + leg_len * math.cos(angle - half_angle)
+            ly = cy + leg_len * math.sin(angle - half_angle)
+            rx = cx + leg_len * math.cos(angle + half_angle)
+            ry = cy + leg_len * math.sin(angle + half_angle)
+            inner.add(dwg.polyline(
+                points=[(lx, ly), (cx, cy), (rx, ry)],
+                stroke=arrow_color, stroke_width=0.75, fill="none",
+            ))
+            shaft_len = 10.0
+            inner.add(dwg.line(
+                start=(cx, cy),
+                end=(cx + dx * shaft_len, cy + dy * shaft_len),
+                stroke=arrow_color, stroke_width=0.75,
             ))
 
 

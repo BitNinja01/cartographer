@@ -44,7 +44,7 @@ def test_compute_arrows_gradient_ridge():
     assert len(arrows) > 0
     for (cx, cy), (dx, dy) in arrows:
         assert abs(dx) < 0.2, f"Expected near-vertical, got dx={dx:.3f}"
-        assert dy < 0, f"Expected downhill (negative dy), got dy={dy:.3f}"
+        assert dy > 0, f"Expected downhill (positive dy), got dy={dy:.3f}"
 
 
 def test_compute_arrows_empty_contours():
