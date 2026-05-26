@@ -56,20 +56,21 @@ def _normalize_hole_features(hole_data: dict) -> dict:
 
     Handles both old format (bare [[[lat,lon],...]] rings) and new
     format ([{"id":"...", "rings":[[...]]}, ...]).
+    Only normalizes keys that exist in the input data.
     """
-    feature_types = ("fairway", "green", "bunkers", "water",
-                     "waterways", "paths", "rough_boundary")
+    feature_list_types = {"fairway", "green", "bunkers", "water",
+                          "waterways", "paths", "rough_boundary"}
     normalized = {}
-    for ftype in feature_types:
-        items = hole_data.get(ftype, [])
-        if not items:
-            normalized[ftype] = []
-            continue
-        if isinstance(items[0], dict) and "rings" in items[0]:
-            normalized[ftype] = [item["rings"] for item in items]
+    for key, items in hole_data.items():
+        if key in feature_list_types:
+            if not items:
+                normalized[key] = []
+            elif isinstance(items[0], dict) and "rings" in items[0]:
+                normalized[key] = [item["rings"] for item in items]
+            else:
+                normalized[key] = items
         else:
-            normalized[ftype] = items
-    normalized["tee_boxes"] = hole_data.get("tee_boxes", {})
+            normalized[key] = items
     return normalized
 
 
