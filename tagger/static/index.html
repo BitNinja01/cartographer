@@ -330,6 +330,34 @@
     .hidden {
       display: none;
     }
+
+    #btn-split-mode {
+      background: var(--surface-elevated);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 14px;
+      transition: all 0.15s;
+    }
+
+    #btn-split-mode:hover {
+      background: var(--border);
+      color: var(--fg);
+    }
+
+    #btn-split-mode.active {
+      background: var(--danger);
+      color: white;
+      border-color: var(--danger);
+    }
+
+    .split-line {
+      stroke-dasharray: 8 4;
+    }
   </style>
 </head>
 <body>
@@ -372,6 +400,7 @@
   <div id="feature-list"></div>
 
   <div id="controls">
+    <button id="btn-split-mode">Split Mode</button>
     <button id="btn-save">Save &amp; Close</button>
   </div>
 </div>
@@ -392,6 +421,9 @@
   let featureAssignments = {};
   const activeFilters = new Set(['fairway','green','bunker','water','waterway','path','tee']);
   let allFeatures = [];
+  let splitModeActive = false;
+  const splitMarkers = [];
+  const splitLineLayers = [];
 
   function toggleFilter(type, visible) {
     visible ? activeFilters.add(type) : activeFilters.delete(type);
@@ -425,6 +457,29 @@
   };
 
   setCurrentHole(1);
+
+  document.getElementById('btn-split-mode').onclick = () => {
+    splitModeActive = !splitModeActive;
+    const btn = document.getElementById('btn-split-mode');
+    if (splitModeActive) {
+      btn.textContent = '\u2715 Exit Split';
+      btn.className = 'active';
+      map.getContainer().style.cursor = 'crosshair';
+    } else {
+      btn.textContent = 'Split Mode';
+      btn.className = '';
+      map.getContainer().style.cursor = '';
+      clearSplitMarkers();
+    }
+  };
+
+  // Load existing assignments from saved data (survives page reload)
+  fetch('/api/assignments')
+    .then(r => r.json())
+    .then(assignments => {
+      Object.assign(featureAssignments, assignments);
+      renderFeatureList(allFeatures);
+    });
 
   const layers = {};
 
