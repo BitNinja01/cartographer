@@ -473,6 +473,145 @@
     }
   };
 
+  function clearSplitMarkers() {
+    splitMarkers.forEach(m => map.removeLayer(m));
+    splitMarkers.length = 0;
+    splitLineLayers.forEach(l => map.removeLayer(l));
+    splitLineLayers.length = 0;
+  }
+
+  function addSplitLine(p1, p2) {
+    fetch('/api/splits', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify([[p1.lat, p1.lng], [p2.lat, p2.lng]]),
+    }).then(r => r.json()).then(data => {
+      if (data.split_id) {
+        const line = L.polyline([p1, p2], {
+          color: '#e53935', weight: 2, dashArray: '8 4',
+          interactive: false,
+        }).addTo(map);
+        splitLineLayers.push(line);
+
+        // Clear assignments for affected (now-split) features
+        (data.affected || []).forEach(orig_id => {
+          Object.keys(featureAssignments).forEach(k => {
+            if (k.startsWith(orig_id)) delete featureAssignments[k];
+          });
+        });
+        refreshFeatures();
+      }
+    });
+  }
+
+  function refreshFeatures() {
+    fetch('/api/features')
+      .then(r => r.json())
+      .then(data => {
+        // Remove old layers from map
+        Object.values(layers).forEach(l => map.removeLayer(l));
+        Object.keys(layers).forEach(k => delete layers[k]);
+        // Re-render from fresh feature data
+        const geojsonLayer = L.geoJSON(data, {
+          style: feature => {
+            const ftype = feature.properties.type;
+            const courseWide = ftype === 'water' || ftype === 'waterway' || ftype === 'path';
+            return {
+              color: typeColours[ftype] || '#888',
+              fillColor: typeColours[ftype] || '#888',
+              fillOpacity: 0.4,
+              weight: 2,
+              interactive: !courseWide && !splitModeActive,
+            };
+          },
+          pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
+            radius: 6,
+            fillColor: typeColours[feature.properties.type] || '#888',
+            color: '#000', weight: 1, fillOpacity: 0.8,
+          }),
+          onEachFeature: (feature, layer) => {
+            const id = feature.properties.osm_id;
+            const ftype = feature.properties.type;
+            if (ftype === 'unclassified') return;
+            layers[id] = layer;
+            layer.on('click', e => {
+              if (splitModeActive) return;
+              if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;
+              if (featureAssignments[id]) {
+                delete featureAssignments[id];
+                map.addLayer(layer);
+                renderFeatureList(allFeatures);
+                return;
+              }
+              if (currentHole >= 1 && currentHole <= 18) {
+                featureAssignments[id] = currentHole;
+                map.removeLayer(layer);
+                renderFeatureList(allFeatures);
+              }
+            });
+          },
+        }).addTo(map);
+        allFeatures = data.features;
+        renderFeatureList(allFeatures);
+        // Reload split lines from server
+        fetch('/api/splits')
+          .then(r => r.json())
+          .then(data => {
+            clearSplitMarkers();
+            (data.features || []).forEach(f => {
+              const coords = f.geometry.coordinates;
+              const line = L.polyline([[coords[0][1], coords[0][0]], [coords[1][1], coords[1][0]]], {
+                color: '#e53935', weight: 2, dashArray: '8 4',
+                interactive: false,
+              }).addTo(map);
+              splitLineLayers.push(line);
+            });
+          });
+      });
+  }
+
+  map.on('click', e => {
+    if (!splitModeActive) return;
+
+    if (splitMarkers.length >= 2) {
+      clearSplitMarkers();
+    }
+
+    const marker = L.marker(e.latlng, {
+      draggable: true,
+      icon: L.divIcon({
+        className: '',
+        html: '<div style="background:#e53935;width:12px;height:12px;border-radius:50%;border:2px solid white;cursor:pointer;"></div>',
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+      }),
+    }).addTo(map);
+
+    marker.on('dragend', () => {
+      if (splitMarkers.length === 2) {
+        clearSplitMarkers();
+        const p1 = splitMarkers[0];
+        const p2 = splitMarkers[1];
+        splitMarkers[0] = p1;
+        splitMarkers[1] = p2;
+        if (p1 && p2) {
+          addSplitLine(p1.getLatLng(), p2.getLatLng());
+        }
+      }
+    });
+
+    marker.on('contextmenu', e => {
+      L.DomEvent.stopPropagation(e);
+      clearSplitMarkers();
+    });
+
+    splitMarkers.push(marker);
+
+    if (splitMarkers.length === 2) {
+      addSplitLine(splitMarkers[0].getLatLng(), splitMarkers[1].getLatLng());
+    }
+  });
+
   // Load existing assignments from saved data (survives page reload)
   fetch('/api/assignments')
     .then(r => r.json())
