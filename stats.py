@@ -7,7 +7,7 @@ def calc_fairway_misses(rounds: list[dict], hole_num: int, par: int) -> str:
         return "N/A"
 
     if len(rounds) < 3:
-        return "_____________"
+        return "L: \u00b7 R:"
 
     fairway_left = 0
     fairway_right = 0
@@ -26,7 +26,7 @@ def calc_fairway_misses(rounds: list[dict], hole_num: int, par: int) -> str:
 
     total_misses = fairway_left + fairway_right
     if total_misses == 0:
-        return "_____________"
+        return "L: \u00b7 R:"
 
     left_pct = round(fairway_left / total_misses * 100)
     right_pct = round(fairway_right / total_misses * 100)
@@ -36,7 +36,7 @@ def calc_fairway_misses(rounds: list[dict], hole_num: int, par: int) -> str:
 
 def calc_gir_misses(rounds: list[dict], hole_num: int) -> str:
     if len(rounds) < 3:
-        return "_____________"
+        return "S: \u00b7 LO: \u00b7 L: \u00b7 R:"
 
     short = 0
     long = 0
@@ -61,7 +61,7 @@ def calc_gir_misses(rounds: list[dict], hole_num: int) -> str:
 
     total_misses = short + long + left + right
     if total_misses == 0:
-        return "_____________"
+        return "S: \u00b7 LO: \u00b7 L: \u00b7 R:"
 
     s_pct = round(short / total_misses * 100)
     lo_pct = round(long / total_misses * 100)
@@ -78,13 +78,13 @@ def calc_gir_misses(rounds: list[dict], hole_num: int) -> str:
     if r_pct > 0:
         parts.append(f"R {r_pct}%")
 
-    return " \u00b7 ".join(parts) if parts else "_____________"
+    return " \u00b7 ".join(parts) if parts else "S: \u00b7 LO: \u00b7 L: \u00b7 R:"
 
 
 def calc_benchmark(rounds: list[dict], hole_num: int, par: int,
                    handicap_index: float, hole_handicap_index: int) -> str:
     if len(rounds) < 3:
-        return "_____________"
+        return "Avg: \u00b7 Exp:"
 
     scores = []
     for rnd in rounds:
@@ -101,7 +101,7 @@ def calc_benchmark(rounds: list[dict], hole_num: int, par: int,
                 pass
 
     if not scores:
-        return "_____________"
+        return "Avg: \u00b7 Exp:"
 
     your_avg = sum(scores) / len(scores)
     expected = par + (handicap_index / 18) * hole_handicap_index
@@ -111,7 +111,7 @@ def calc_benchmark(rounds: list[dict], hole_num: int, par: int,
 
 def calc_penalties(rounds: list[dict], hole_num: int) -> str:
     if len(rounds) < 3:
-        return "_____________"
+        return "Avg:"
 
     penalties = []
     for rnd in rounds:
@@ -127,7 +127,7 @@ def calc_penalties(rounds: list[dict], hole_num: int) -> str:
             penalties.append(0)
 
     if not penalties:
-        return "_____________"
+        return "Avg:"
 
     avg_penalties = sum(penalties) / len(penalties)
     return f"{avg_penalties:.1f} avg"

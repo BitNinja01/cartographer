@@ -7,7 +7,10 @@ Produces a single 4.25" x 14" SVG page containing:
 """
 from __future__ import annotations
 
+import base64
 import io
+
+import cairosvg
 import svgwrite
 
 # Page dimensions in SVG points (72 points per inch)
@@ -47,6 +50,12 @@ _CHAR_WIDTH_RATIO = 0.80    # tuned to cairosvg/Pango rendering — proportional
                             # at 12pt for 11 chars → 0.756/char; 0.80 adds safety margin)
 _ASCENDER_RATIO   = 1.02    # sTypoAscender / upm
 _DESCENDER_RATIO  = 0.30    # abs(sTypoDescender) / upm
+
+
+def _svg_to_png_data_uri(svg_str: str) -> str:
+    png_bytes = cairosvg.svg2png(bytestring=svg_str.encode("utf-8"))
+    b64 = base64.b64encode(png_bytes).decode("ascii")
+    return f"data:image/png;base64,{b64}"
 
 
 def _text_width(text: str, font_size: float) -> float:
@@ -143,7 +152,7 @@ def flip_page_svg(svg_str: str, w: float, h: float) -> str:
     dwg = svgwrite.Drawing(size=(f"{w}pt", f"{h}pt"), viewBox=f"0 0 {w} {h}")
     g = dwg.g(transform=f"rotate(180, {w / 2}, {h / 2})")
     g.add(dwg.image(
-        href="data:image/svg+xml," + svg_str.replace("#", "%23"),
+        href=_svg_to_png_data_uri(svg_str),
         insert=(0, 0),
         size=(w, h),
     ))
@@ -161,13 +170,13 @@ def compose_sheet(top_svg: str, bottom_svg: str) -> str:
     dwg.add(dwg.rect(insert=(0, 0), size=(PAGE_W, PAGE_H), fill="white"))
 
     dwg.add(dwg.image(
-        href="data:image/svg+xml," + top_svg.replace("#", "%23"),
+        href=_svg_to_png_data_uri(top_svg),
         insert=(0, MARGIN),
         size=(PAGE_W, PAGE_CONTENT_H),
     ))
 
     dwg.add(dwg.image(
-        href="data:image/svg+xml," + bottom_svg.replace("#", "%23"),
+        href=_svg_to_png_data_uri(bottom_svg),
         insert=(0, PAGE_H / 2),
         size=(PAGE_W, PAGE_CONTENT_H),
     ))
@@ -191,7 +200,7 @@ def render_hole_page(
     )
 
     dwg.add(dwg.image(
-        href="data:image/svg+xml," + hole_svg.replace("#", "%23"),
+        href=_svg_to_png_data_uri(hole_svg),
         insert=(MARGIN, 0),
         size=(PRINTABLE_W, PAGE_CONTENT_H),
     ))
@@ -214,7 +223,11 @@ def render_hole_page(
         insert=(hn_rect_x, hn_rect_y),
         size=(hn_rect_w, hn_rect_h),
         fill="white",
-        stroke="none",
+        fill_opacity=1.0,
+        stroke="#000000",
+        stroke_width=0.5,
+        rx=3,
+        ry=3,
     ))
 
     # Circle: centred in rect horizontally, pad from rect top
@@ -275,8 +288,11 @@ def render_hole_page(
             insert=(yd_rect_x, yd_rect_y),
             size=(yd_rect_w, yd_rect_h),
             fill="white",
-            fill_opacity=0.75,
-            stroke="none",
+            fill_opacity=1.0,
+            stroke="#000000",
+            stroke_width=0.5,
+            rx=3,
+            ry=3,
         ))
 
         # Text: right-aligned to rect interior right edge — colons align naturally
@@ -333,12 +349,11 @@ def _render_slot(
 ) -> None:
     """Render a single slot (green grid, stats panel, or notes)."""
     if content_type == "green_grid":
-        # Embed pre-rendered green SVG
         if svg_content:
             dwg.add(dwg.image(
-                href="data:image/svg+xml," + svg_content.replace("#", "%23"),
-                insert=(x + width / 2 - height / 2, y),
-                size=(height, height),  # square, centered
+                href=_svg_to_png_data_uri(svg_content),
+                insert=(x, y),
+                size=(width, height),
             ))
 
     elif content_type == "stats_panel":
@@ -350,55 +365,98 @@ def _render_slot(
         if stats_data and hole_num in stats_data:
             hole_stats = stats_data[hole_num]
             stats = [
-                ("FAIRWAY MISSES", hole_stats.get("fairway_misses", "_____________")),
-                ("GIR MISSES", hole_stats.get("gir_misses", "_____________")),
-                ("VS EXPECTED", hole_stats.get("benchmark", "_____________")),
-                ("PENALTIES", hole_stats.get("penalties", "_____________")),
+                ("FAIRWAY MISSES", hole_stats.get("fairway_misses", "L: \u00b7 R:")),
+                ("GIR MISSES", hole_stats.get("gir_misses", "S: \u00b7 LO: \u00b7 L: \u00b7 R:")),
+                ("SCORE", hole_stats.get("benchmark", "Avg: \u00b7 Exp:")),
+                ("PENALTIES", hole_stats.get("penalties", "Avg:")),
             ]
         else:
             stats = [
-                ("FAIRWAY MISSES", "_____________"),
-                ("GIR MISSES", "_____________"),
-                ("VS EXPECTED", "_____________"),
-                ("PENALTIES", "_____________"),
+                ("FAIRWAY MISSES", "L: \u00b7 R:"),
+                ("GIR MISSES", "S: \u00b7 LO: \u00b7 L: \u00b7 R:"),
+                ("SCORE", "Avg: \u00b7 Exp:"),
+                ("PENALTIES", "Avg:"),
             ]
 
         positions = [
-            (x, y),                          # top-left
-            (x + box_w, y),                  # top-right
-            (x, y + box_h),                  # bottom-left
-            (x + box_w, y + box_h),          # bottom-right
+            (x, y),
+            (x + box_w, y),
+            (x, y + box_h),
+            (x + box_w, y + box_h),
         ]
 
-        for (bx, by), (label, value) in zip(positions, stats):
-            # Border
+        for (bx, by), (title, value) in zip(positions, stats):
             dwg.add(dwg.rect(
                 insert=(bx, by),
                 size=(box_w, box_h),
                 fill="white",
-                stroke="#ccc",
+                stroke="#000000",
                 stroke_width=0.5,
             ))
 
-            # Label (small caps, top)
+            rows = value.split(" \u00b7 ")
+            header_h = 22
+            row_h = (box_h - header_h) / max(len(rows), 1)
+            col1_w = 38
+
             dwg.add(dwg.text(
-                label,
-                insert=(bx + box_w / 2, by + 20),
-                font_size="9pt",
+                title,
+                insert=(bx + box_w / 2, by + header_h / 2 + 3),
+                font_size="8pt",
                 font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-                fill="#555",
+                fill="#000000",
+                font_weight="bold",
                 text_anchor="middle",
             ))
 
-            # Value (centered)
-            dwg.add(dwg.text(
-                value,
-                insert=(bx + box_w / 2, by + box_h / 2 + 5),
-                font_size="11pt",
-                font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-                fill="#212121",
-                text_anchor="middle",
+            dwg.add(dwg.line(
+                start=(bx, by + header_h),
+                end=(bx + box_w, by + header_h),
+                stroke="#000000",
+                stroke_width=0.5,
             ))
+
+            dwg.add(dwg.line(
+                start=(bx + col1_w, by + header_h),
+                end=(bx + col1_w, by + box_h),
+                stroke="#000000",
+                stroke_width=0.3,
+            ))
+
+            for i, part in enumerate(rows):
+                row_top = by + header_h + i * row_h
+                if " " in part:
+                    lbl, val = part.split(" ", 1)
+                else:
+                    lbl = part
+                    val = ""
+
+                dwg.add(dwg.text(
+                    lbl,
+                    insert=(bx + col1_w - 4, row_top + row_h / 2 + 3),
+                    font_size="9pt",
+                    font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
+                    fill="#000000",
+                    text_anchor="end",
+                ))
+
+                if val:
+                    dwg.add(dwg.text(
+                        val,
+                        insert=(bx + col1_w + 4, row_top + row_h / 2 + 3),
+                        font_size="9pt",
+                        font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
+                        fill="#000000",
+                        text_anchor="start",
+                    ))
+
+                if i < len(rows) - 1:
+                    dwg.add(dwg.line(
+                        start=(bx, row_top + row_h),
+                        end=(bx + box_w, row_top + row_h),
+                        stroke="#000000",
+                        stroke_width=0.3,
+                    ))
 
     elif content_type == "notes":
         # Ruled lines
@@ -408,7 +466,7 @@ def _render_slot(
             dwg.add(dwg.line(
                 start=(x, line_y),
                 end=(x + width, line_y),
-                stroke="#ddd",
+                stroke="#000000",
                 stroke_width=0.5,
             ))
             line_y += line_spacing
@@ -579,7 +637,7 @@ def compose_back_page(
     if full_course_svg:
         overview_h = PAGE_CONTENT_H - 4 * MARGIN - 24
         dwg.add(dwg.image(
-            href="data:image/svg+xml," + full_course_svg.replace("#", "%23"),
+            href=_svg_to_png_data_uri(full_course_svg),
             insert=(MARGIN, MARGIN),
             size=(PRINTABLE_W, overview_h),
         ))
@@ -610,13 +668,13 @@ def compose_chart_page(
         font_size="14pt",
         font_weight="bold",
         font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-        fill="#212121",
+        fill="#000000",
         text_anchor="middle",
     ))
 
     cols = 4
     rows = 15
-    headers = ["Club", "Carry", "Total", "Notes"]
+    headers = ["Club", "Carry", "Half", "Max"]
     grid_top = 55
     grid_bottom = PAGE_CONTENT_H
     grid_left = MARGIN
@@ -634,7 +692,7 @@ def compose_chart_page(
                 insert=(x, y),
                 size=(cw, rh),
                 fill="white",
-                stroke="#ccc",
+                stroke="#000000",
                 stroke_width=0.5,
             ))
             if row == 0:
@@ -643,7 +701,7 @@ def compose_chart_page(
                     insert=(x + cw / 2, y + rh / 2 + 4),
                     font_size="11pt",
                     font_family="JetBrainsMonoNL NFM, JetBrainsMono, monospace",
-                    fill="#555",
+                    fill="#000000",
                     text_anchor="middle",
                 ))
 
@@ -662,7 +720,7 @@ def compose_notes_page() -> str:
         dwg.add(dwg.line(
             start=(MARGIN, line_y),
             end=(PAGE_W - MARGIN, line_y),
-            stroke="#ddd",
+            stroke="#000000",
             stroke_width=0.5,
         ))
         line_y += line_spacing

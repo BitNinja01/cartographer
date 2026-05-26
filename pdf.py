@@ -7,33 +7,69 @@ combines them into 5 saddle-stitch booklet PDFs (8.5" x 14") using pypdf.
 from __future__ import annotations
 
 import io
+import math
 import sys
 from pathlib import Path
 
+import numpy as np
+
 import cairosvg
+from PIL import Image
+from shapely.geometry import Polygon, LineString
 from pypdf import PdfWriter, PdfReader, Transformation
 
 from cartographer.data import load_courses_geo
 from cartographer.geometry import (
-    project_course, fit_hole, smooth_hole_geometry,
+    project_course, fit_hole, smooth_hole_geometry, chaikin_smooth, chaikin_smooth_open,
     get_green_centroid, get_green_rotation, compute_yardage_arcs,
     compute_pixels_per_yard_from_geometry,
 )
 from cartographer.renderer import render_hole, render_green, render_course_overview
+from cartographer.elevation import get_course_dem, compute_elevation_shading, compute_contours
 from cartographer.layout import (
     compose_sheet, compose_front_page, compose_back_page, compose_chart_page,
     compose_notes_page, render_hole_page, render_bottom_slots,
     flip_page_svg, PAGE_W, PAGE_CONTENT_H, SLOT_H, PRINTABLE_W, MARGIN
 )
 
-HOLE_CANVAS_W = 306.0   # 4.25 * 72
-HOLE_CANVAS_H = 504.0   # 7" for hole diagram section
-HOLE_LEFT_BIAS = 50.0   # pts — shift hole leftward on top pages; clamped to padding floor in fit_hole()
+HOLE_CANVAS_W = 270.0   # PRINTABLE_W
+HOLE_CANVAS_H = 486.0   # PAGE_CONTENT_H
+HOLE_LEFT_BIAS = 44.0   # pts — shift hole leftward on top pages; clamped to padding floor in fit_hole()
 
 
 def _svg_to_pdf_bytes(svg_string: str) -> bytes:
     """Convert an SVG string to PDF bytes via cairosvg."""
     return cairosvg.svg2pdf(bytestring=svg_string.encode("utf-8"))
+
+
+def _clip_contour_to_green(
+    fitted_contour_ring: list[list[float]],
+    fitted_green_poly: Polygon | None,
+) -> list[list[float]]:
+    """Clip a fitted contour path to the green polygon boundary.
+
+    Args:
+        fitted_contour_ring: List of [x, y] pairs in fitted (slot) coordinates.
+        fitted_green_poly: Shapely Polygon of the fitted green.
+
+    Returns:
+        Clipped [x, y] pairs, or empty list if no intersection.
+    """
+    if fitted_green_poly is None or not fitted_contour_ring:
+        return fitted_contour_ring
+
+    line = LineString(fitted_contour_ring)
+    clipped = line.intersection(fitted_green_poly)
+
+    if clipped.is_empty:
+        return []
+    elif clipped.geom_type == "LineString":
+        return list(clipped.coords)
+    elif clipped.geom_type == "MultiLineString":
+        longest = max(clipped.geoms, key=lambda g: g.length)
+        return list(longest.coords)
+    else:
+        return []
 
 
 def _get_hole_render_data(
@@ -44,29 +80,41 @@ def _get_hole_render_data(
     course_ps: dict,
     slot1_mode: str,
     slot2_mode: str,
+    dem_path: Path | None = None,
+    contour_cache: dict[int, list] | None = None,
+    status_callback: callable = None,
+    compute_slots: bool = True,
 ) -> dict | None:
     """Render a single hole and return raw data for page composition.
 
     Returns dict with keys: hole_svg, par, tee_yardages, slot1_svg, slot2_svg
     or None if hole geometry is missing.
+
+    dem_path: optional path to cached DEM GeoTIFF for elevation shading.
+    compute_slots: if False, skip green-grid/shading/contour computation
+                   (used for top-half pages where only the hole diagram is rendered).
     """
     hole_key = str(hole_num)
     if hole_key not in holes_geo:
         return None
 
-    # Project with ppy derived from this hole's own geometry so that
-    # ppy * scale_factor cancels correctly in the arc radius formula.
     ppy = compute_pixels_per_yard_from_geometry(
         {hole_key: holes_geo[hole_key]}, canvas_h=HOLE_CANVAS_H
     )
     effective_scale = {**scale_data, "pixels_per_yard": ppy}
-    projected = project_course(holes_geo, effective_scale)
+    projected = project_course(holes_geo, effective_scale, only_hole=hole_key)
 
     hole_geom = projected.get(hole_key, {})
     if not hole_geom:
         return None
 
-    hole_geom = smooth_hole_geometry(hole_geom)
+    slot_context_features: dict[str, list] = {
+        ft: list(hole_geom.get(ft, []))
+        for ft in ("fairway", "water", "bunkers", "rough_boundary", "paths")
+    }
+
+    hole_geom = smooth_hole_geometry(hole_geom, pixels_per_yard=ppy)
+
     fitted, _, _, scale = fit_hole(hole_geom, HOLE_CANVAS_W, HOLE_CANVAS_H, left_bias=HOLE_LEFT_BIAS)
 
     if settings.get("cartographer.yardage_arcs", True):
@@ -74,19 +122,194 @@ def _get_hole_render_data(
         gcx, gcy = get_green_centroid(fitted)
         fitted["_arcs"] = compute_yardage_arcs((gcx, gcy), distances, ppy, scale)
 
+    show_heightmap = settings.get("cartographer.green_heightmap", True)
+    show_contours = settings.get("cartographer.green_contours", True)
+    show_arrows = settings.get("cartographer.green_arrows", True)
+
     hole_svg = render_hole(fitted, settings=settings)
 
     hole_ps_data = course_ps.get("holes", {}).get(hole_key, {})
     tee_yardages = {t: int(y) for t, y in hole_ps_data.get("tees", {}).items()}
     par = int(hole_ps_data.get("par", 4))
 
+    green_rot = get_green_rotation(hole_geom)
     slot1_svg = ""
     slot2_svg = ""
-    green_rot = get_green_rotation(hole_geom)
-    if slot1_mode == "green_grid":
-        slot1_svg = render_green({"green": hole_geom.get("green", [])}, canvas_w=PAGE_W, canvas_h=SLOT_H, rotation_deg=green_rot)
-    if slot2_mode == "green_grid":
-        slot2_svg = render_green({"green": hole_geom.get("green", [])}, canvas_w=PAGE_W, canvas_h=SLOT_H, rotation_deg=green_rot)
+
+    if compute_slots and (slot1_mode == "green_grid" or slot2_mode == "green_grid"):
+        proj_greens = hole_geom.get("green", [])
+        if proj_greens:
+            proj_ring = proj_greens[0]
+
+            px = [p[0] for p in proj_ring]
+            py = [p[1] for p in proj_ring]
+            gc_cx = (min(px) + max(px)) / 2
+            gc_cy = (min(py) + max(py)) / 2
+            rad = math.radians(green_rot)
+            cos_a, sin_a = math.cos(rad), math.sin(rad)
+
+            rotated_green = []
+            for x, y in proj_ring:
+                rx = (x - gc_cx) * cos_a - (y - gc_cy) * sin_a + gc_cx
+                ry = (x - gc_cx) * sin_a + (y - gc_cy) * cos_a + gc_cy
+                rotated_green.append([rx, ry])
+
+            rpx = [p[0] for p in rotated_green]
+            rpy = [p[1] for p in rotated_green]
+            rmin_x, rmax_x = min(rpx), max(rpx)
+            rmin_y, rmax_y = min(rpy), max(rpy)
+            rw = rmax_x - rmin_x or 1.0
+            rh = rmax_y - rmin_y or 1.0
+
+            padding = 15.0
+            avail_w = PRINTABLE_W - 2 * padding
+            avail_h = SLOT_H - 2 * padding
+            slot_scale = min(avail_w / rw, avail_h / rh)
+            off_x = padding + (avail_w - rw * slot_scale) / 2 - rmin_x * slot_scale
+            off_y = padding + (avail_h - rh * slot_scale) / 2 - rmin_y * slot_scale
+
+            slot_fitted: dict[str, list] = {
+                ft: [] for ft in ("fairway", "water", "bunkers",
+                                  "waterways", "rough_boundary", "paths", "contours")
+            }
+            slot_fitted["tee_boxes"] = {}
+            slot_fitted["green"] = [chaikin_smooth(
+                [[x * slot_scale + off_x, y * slot_scale + off_y] for x, y in rotated_green]
+            )]
+
+            green_cx = sum(px) / len(px)
+            green_cy = sum(py) / len(py)
+
+            def _fit_point(x, y):
+                rx = (x - green_cx) * cos_a - (y - green_cy) * sin_a + green_cx
+                ry = (x - green_cx) * sin_a + (y - green_cy) * cos_a + green_cy
+                return [rx * slot_scale + off_x, ry * slot_scale + off_y]
+
+            for feature_type in ("fairway", "water", "bunkers", "rough_boundary"):
+                rings = slot_context_features.get(feature_type, [])
+                fitted_rings = []
+                for ring in rings:
+                    fitted = [_fit_point(x, y) for x, y in ring]
+                    fitted_rings.append(chaikin_smooth(fitted, iterations=1))
+                slot_fitted[feature_type] = fitted_rings
+
+            fitted_paths = []
+            for line in slot_context_features.get("paths", []):
+                fitted_paths.append([_fit_point(x, y) for x, y in line])
+            slot_fitted["paths"] = fitted_paths
+        else:
+            slot_fitted = {"green": [], "fairway": [], "bunkers": [],
+                           "water": [], "waterways": [], "rough_boundary": [],
+                           "paths": [], "contours": [], "tee_boxes": {}}
+
+        # Elevation shading: extract DEM, resize to projected geographic bbox,
+        # then apply rotation as an SVG transform (not PIL — avoids aspect-ratio
+        # mismatch between geographic bbox and fitted polygon bbox).
+        shading_data = None
+        greens = slot_fitted.get("green", [])
+        contour_paths = []
+        if dem_path is not None and greens and (show_heightmap or show_contours or show_arrows):
+            orig_greens = holes_geo[hole_key].get("green", [])
+            if orig_greens:
+                if status_callback and (contour_cache is None or hole_num not in contour_cache):
+                    status_callback(f"Computing elevation shading for hole {hole_num}...")
+                shading_img = compute_elevation_shading(orig_greens[0], dem_path)
+                if shading_img is not None:
+                    # Compute projected geographic bbox (unrotated)
+                    proj_green = hole_geom.get("green", [])
+                    if proj_green:
+                        px = [p[0] for p in proj_green[0]]
+                        py = [p[1] for p in proj_green[0]]
+                        pmin_x, pmax_x = min(px), max(px)
+                        pmin_y, pmax_y = min(py), max(py)
+                        pw, ph = pmax_x - pmin_x, pmax_y - pmin_y
+
+                        # SVG position of projected bbox (same *scale + offset as fit_hole)
+                        svg_bx = pmin_x * slot_scale + off_x
+                        svg_by = pmin_y * slot_scale + off_y
+                        svg_bw = pw * slot_scale
+                        svg_bh = ph * slot_scale
+
+                        # Rotation centre must match fit_hole() which rotates
+                        # around the projected green bbox centre. In SVG space
+                        # that centre is the image centre.
+                        gcx = svg_bx + svg_bw / 2
+                        gcy = svg_by + svg_bh / 2
+
+                        img_resized = shading_img.resize(
+                            (max(1, int(svg_bw)), max(1, int(svg_bh))), Image.LANCZOS
+                        )
+                        import io as _io
+                        buf = _io.BytesIO()
+                        img_resized.save(buf, format="PNG")
+
+                        if contour_cache is not None and hole_num in contour_cache:
+                            contour_paths = contour_cache[hole_num]
+                        else:
+                            if status_callback:
+                                status_callback(f"Extracting & connecting contour lines...")
+                            contour_render_scale = 2
+                            img_contour = shading_img.resize(
+                                (max(1, int(svg_bw * contour_render_scale)),
+                                 max(1, int(svg_bh * contour_render_scale))),
+                                Image.LANCZOS,
+                            )
+                            z_arr = np.array(img_contour, dtype=float)
+                            contour_levels = [i * 255.0 / 13 for i in range(1, 13)]
+                            raw_contours = compute_contours(z_arr, contour_levels)
+                            contour_paths = []
+                            for level in sorted(raw_contours):
+                                for polyline in raw_contours[level]:
+                                    path = [[svg_bx + float(p[0]) / contour_render_scale,
+                                             svg_by + float(p[1]) / contour_render_scale]
+                                            for p in polyline]
+                                    if len(path) >= 2:
+                                        path_tuples = [(p[0], p[1]) for p in path]
+                                        if len(path_tuples) >= 2 * 33:
+                                            decimated = path_tuples[::33]
+                                            if decimated[-1] != path_tuples[-1]:
+                                                decimated.append(path_tuples[-1])
+                                        else:
+                                            decimated = path_tuples
+                                        smoothed = chaikin_smooth_open(decimated, iterations=3)
+                                        if len(smoothed) >= 2:
+                                            total_len = sum(
+                                                math.hypot(smoothed[i][0] - smoothed[i-1][0],
+                                                           smoothed[i][1] - smoothed[i-1][1])
+                                                for i in range(1, len(smoothed))
+                                            )
+                                            if total_len >= 30.0:
+                                                contour_paths.append([[x, y] for x, y in smoothed])
+                            if contour_cache is not None:
+                                contour_cache[hole_num] = contour_paths
+                            if status_callback:
+                                status_callback(f"Generating sheet for hole {hole_num}...")
+
+                        shading_data = {
+                            "png_bytes": buf.getvalue(),
+                            "bbox": (svg_bx, svg_by, svg_bx + svg_bw, svg_by + svg_bh),
+                            "rotate_angle": green_rot,
+                            "rotate_cx": gcx,
+                            "rotate_cy": gcy,
+                            "contour_paths": contour_paths,
+                            "show_heightmap": show_heightmap,
+                            "show_contours": show_contours,
+                            "show_arrows": show_arrows,
+                        }
+    else:
+        slot_fitted = None
+        shading_data = None
+
+    if compute_slots and slot1_mode == "green_grid":
+        slot1_svg = render_green(
+            slot_fitted, canvas_w=PRINTABLE_W, canvas_h=SLOT_H,
+            fitted=True, shading_data=shading_data,
+        )
+    if compute_slots and slot2_mode == "green_grid":
+        slot2_svg = render_green(
+            slot_fitted, canvas_w=PRINTABLE_W, canvas_h=SLOT_H,
+            fitted=True, shading_data=shading_data,
+        )
 
     return {
         "hole_svg": hole_svg,
@@ -105,6 +328,7 @@ def generate_book(
     show_calculated_stats: bool = True,
     settings: dict | None = None,
     progress_callback: callable = None,
+    status_callback: callable = None,
 ) -> None:
     """Generate a complete yardage book for a course.
 
@@ -115,6 +339,7 @@ def generate_book(
     show_calculated_stats: if False, stat boxes render as blank (labels + underlines)
     settings: plugin settings dict.
     progress_callback: optional function(current_page, total_pages) for progress updates
+    status_callback: optional function(message) for status text updates
     """
     if settings is None:
         settings = {}
@@ -196,6 +421,10 @@ def generate_book(
     holes_geo = course_geo.get("holes", {})
     scale_data = course_geo.get("scale", {})
 
+    if status_callback:
+        status_callback("Downloading elevation data...")
+    dem_path = get_course_dem(course_name, holes_geo)
+
     safe_course = course_name.lower().replace(" ", "_").replace("'", "").replace('"', "")
 
     # Generate 20 narrow PDFs in cross-paired order
@@ -205,6 +434,8 @@ def generate_book(
     booklets_dir = output_dir / "booklets"
     booklets_dir.mkdir(parents=True, exist_ok=True)
     narrow_pdfs: list[bytes] = []
+
+    contour_cache: dict[int, list] = {}
 
     total_steps = 25  # 20 sheets + 5 booklets
 
@@ -218,11 +449,13 @@ def generate_book(
             fname = f"{safe_course}_{top_hole}_{bottom_hole}.pdf"
             top_hd = _get_hole_render_data(
                 top_hole, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode,
+                slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
+                status_callback=status_callback, compute_slots=False,
             )
             bottom_hd = _get_hole_render_data(
                 bottom_hole, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode,
+                slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
+                status_callback=status_callback,
             )
             if top_hd:
                 top_svg = render_hole_page(
@@ -249,7 +482,8 @@ def generate_book(
             chart_svg = compose_chart_page()
             hd = _get_hole_render_data(
                 18, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode,
+                slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
+                status_callback=status_callback,
             )
             if hd:
                 bottom_svg = render_bottom_slots(
@@ -271,11 +505,13 @@ def generate_book(
             fname = f"{safe_course}_{top_hole}_{bottom_hole}.pdf"
             top_hd = _get_hole_render_data(
                 top_hole, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode,
+                slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
+                status_callback=status_callback, compute_slots=False,
             )
             bottom_hd = _get_hole_render_data(
                 bottom_hole, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode,
+                slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
+                status_callback=status_callback,
             )
             if top_hd:
                 top_svg = render_hole_page(
@@ -301,7 +537,8 @@ def generate_book(
             fname = f"{safe_course}_18_notes.pdf"
             hd = _get_hole_render_data(
                 18, holes_geo, scale_data, settings, course_ps,
-                slot1_mode, slot2_mode,
+                slot1_mode, slot2_mode, dem_path=dem_path, contour_cache=contour_cache,
+                status_callback=status_callback, compute_slots=False,
             )
             if hd:
                 top_svg = render_hole_page(

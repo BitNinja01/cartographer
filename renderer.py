@@ -31,9 +31,9 @@ _COLOURS = {
 _STROKE_WIDTH = 0.644586
 
 # Hole layout canvas size (SVG user units = points at 72dpi, 4.25" wide)
-HOLE_CANVAS_W = 306.0   # 4.25 * 72
-HOLE_CANVAS_H = 504.0   # 7" for hole diagram section
-HOLE_LEFT_BIAS = 100.0  # pts — shift hole leftward; clamped to padding floor in fit_hole()
+HOLE_CANVAS_W = 270.0   # PRINTABLE_W
+HOLE_CANVAS_H = 486.0   # PAGE_CONTENT_H
+HOLE_LEFT_BIAS = 45.0  # pts — shift hole leftward; clamped to padding floor in fit_hole()
 
 
 def _draw_polygons(
@@ -43,10 +43,17 @@ def _draw_polygons(
     stroke: str,
     fill: str,
     stroke_width: float | None = None,
+    stroke_opacity: float | None = None,
+    stroke_dasharray: str | None = None,
 ) -> None:
     """Draw a list of polygon rings onto a svgwrite group."""
     if stroke_width is None:
         stroke_width = _STROKE_WIDTH
+    style: dict[str, str] = {}
+    if stroke_opacity is not None:
+        style["stroke-opacity"] = str(stroke_opacity)
+    if stroke_dasharray is not None:
+        style["stroke-dasharray"] = stroke_dasharray
     for ring in rings:
         if len(ring) < 3:
             continue
@@ -57,6 +64,7 @@ def _draw_polygons(
             fill=fill,
             stroke_width=stroke_width,
             fill_rule="evenodd",
+            style=";".join(f"{k}:{v}" for k, v in style.items()) if style else None,
         ))
 
 
@@ -145,7 +153,7 @@ def render_hole(
                 r=float(r),
                 fill="none",
                 stroke="#000000",
-                stroke_width=0.25,
+                stroke_width=0.5,
                 stroke_dasharray="3,3",
             ))
         if arcs:
@@ -160,8 +168,16 @@ def render_hole(
     return dwg.tostring()
 
 
-def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = False, rotation_deg: float | None = None, canvas_w: float | None = None, canvas_h: float | None = None) -> str:
-    """Render a green detail SVG with a grid overlay.
+def render_green(
+    green_geom: dict,
+    canvas_size: float = 200.0,
+    fitted: bool = False,
+    rotation_deg: float | None = None,
+    canvas_w: float | None = None,
+    canvas_h: float | None = None,
+    shading_data: dict | None = None,
+) -> str:
+    """Render a green detail SVG with elevation shading.
 
     green_geom: a hole geometry dict (only 'green' key is used).
     canvas_size: fallback square canvas size if canvas_w/canvas_h not provided.
@@ -169,11 +185,9 @@ def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = Fa
     canvas_h: explicit canvas height; defaults to canvas_size.
     fitted: if True, green rings are already fitted — skip fit_hole().
     rotation_deg: rotation angle to use when fitting green-only geometry.
-        If None and fitted=False, computed from the green geometry (which
-        may not match the full hole orientation). Pass the rotation from
-        the full hole to make the green grid match the hole layout.
+    shading_data: optional dict with 'png_bytes', 'svg_corners', 'green_ring'.
+        When provided, drawn instead of the ruled grid or contours.
     """
-    # ch is the square fitting region; cw is the full slot width for horizontal line extension
     ch = canvas_h if canvas_h is not None else canvas_size
     cw = canvas_w if canvas_w is not None else canvas_size
 
@@ -181,12 +195,17 @@ def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = Fa
         size=(f"{cw}pt", f"{ch}pt"),
         viewBox=f"0 0 {cw} {ch}",
     )
+    dwg.add(dwg.rect(insert=(0, 0), size=(cw, ch), fill="white"))
 
-    # Green is fitted to a ch×ch square, then centered horizontally in the cw-wide canvas
-    x_offset = (cw - ch) / 2
+    x_offset = (cw - ch) / 2 if not fitted else 0
 
     if fitted:
-        raw = {"green": green_geom.get("green", [])}
+        raw = {"green": green_geom.get("green", []),
+               "fairway": green_geom.get("fairway", []),
+               "water": green_geom.get("water", []),
+               "bunkers": green_geom.get("bunkers", []),
+               "rough_boundary": green_geom.get("rough_boundary", []),
+               "paths": green_geom.get("paths", [])}
     else:
         raw, _, _, _ = fit_hole(
             {"green": green_geom.get("green", []),
@@ -198,24 +217,230 @@ def render_green(green_geom: dict, canvas_size: float = 200.0, fitted: bool = Fa
 
     stroke_col, fill_col = _COLOURS["green"]
     g = dwg.g(transform=f"translate({x_offset}, 0)")
-    _draw_polygons(dwg, g, raw.get("green", []), stroke=stroke_col, fill=fill_col)
+    if shading_data is not None:
+        for feature_type in ("rough_boundary", "fairway", "water", "bunkers"):
+            s, _ = _COLOURS[feature_type]
+            rings = raw.get(feature_type, [])
+            if rings:
+                _draw_polygons(dwg, g, rings, stroke=s, fill="white",
+                               stroke_opacity=0.5, stroke_dasharray="4,4")
+        stroke_col_p, _ = _COLOURS["paths"]
+        path_lines = raw.get("paths", [])
+        if path_lines:
+            _draw_lines(dwg, g, path_lines, stroke=stroke_col_p)
+        _draw_polygons(dwg, g, raw.get("green", []), stroke="none", fill="white")
+        green_ring = raw.get("green", [])
+        if green_ring:
+            _draw_elevation_shading(
+                dwg, g,
+                png_bytes=shading_data["png_bytes"],
+                bbox=shading_data["bbox"],
+                green_ring=green_ring[0],
+                rotate_angle=shading_data.get("rotate_angle", 0.0),
+                rotate_cx=shading_data.get("rotate_cx", 0.0),
+                rotate_cy=shading_data.get("rotate_cy", 0.0),
+                contour_paths=shading_data.get("contour_paths"),
+                show_heightmap=shading_data.get("show_heightmap", True),
+                show_contours=shading_data.get("show_contours", True),
+                show_arrows=shading_data.get("show_arrows", False),
+            )
+        _draw_polygons(dwg, g, raw.get("green", []), stroke=stroke_col, fill="none")
+    else:
+        _draw_polygons(dwg, g, raw.get("green", []), stroke=stroke_col, fill=fill_col)
     dwg.add(g)
+    if shading_data is None:
+        _draw_green_grid(dwg, ch, cw, x_offset)
 
-    # Grid overlay:
-    # - Vertical lines: spaced and positioned within the centered square region
-    # - Horizontal lines: extend full slot width (cw) edge to edge
+    return dwg.tostring()
+
+
+def _compute_arrows(
+    png_bytes: bytes,
+    bbox: tuple[float, float, float, float],
+    contour_paths: list[list[list[float]]],
+    spacing: float = 5.0,
+) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    """Compute downhill-direction arrows at sample points along contour polylines.
+
+    Returns a list of ((anchor_x, anchor_y), (dir_x, dir_y)) tuples where
+    (dir_x, dir_y) is a unit-length vector pointing downhill (high -> low).
+
+    The shading image has white=high, black=low. np.gradient returns
+    (dy, dx) pointing from low->high, matching the downhill direction.
+
+    spacing: arc-length interval in SVG points between sample arrows.
+    """
+    import numpy as np
+    import io
+    from PIL import Image
+
+    if not contour_paths:
+        return []
+
+    img = Image.open(io.BytesIO(png_bytes))
+    arr = np.array(img.convert("L"), dtype=float)
+    h, w = arr.shape
+    dy_arr, dx_arr = np.gradient(arr)
+
+    bx, by, bx2, by2 = bbox
+    bbox_w = bx2 - bx
+    bbox_h = by2 - by
+    if bbox_w <= 0 or bbox_h <= 0:
+        return []
+
+    arrows: list[tuple[tuple[float, float], tuple[float, float]]] = []
+
+    for path in contour_paths:
+        if len(path) < 3:
+            continue
+
+        cumulative = [0.0]
+        for i in range(1, len(path)):
+            seg_len = math.hypot(
+                path[i][0] - path[i-1][0],
+                path[i][1] - path[i-1][1],
+            )
+            cumulative.append(cumulative[-1] + seg_len)
+
+        total_len = cumulative[-1]
+        if total_len < spacing * 2:
+            continue
+
+        n_samples = max(1, int(total_len / spacing))
+        sample_stops = [i * total_len / n_samples for i in range(n_samples)]
+
+        seg_idx = 0
+        for stop in sample_stops:
+            while seg_idx < len(cumulative) - 1 and cumulative[seg_idx + 1] < stop:
+                seg_idx += 1
+            if seg_idx >= len(path) - 1:
+                break
+
+            seg_start = cumulative[seg_idx]
+            seg_end = cumulative[seg_idx + 1]
+            seg_range = seg_end - seg_start
+            t = (stop - seg_start) / seg_range if seg_range > 0 else 0.0
+            t = max(0.0, min(1.0, t))
+
+            sx = path[seg_idx][0] + t * (path[seg_idx + 1][0] - path[seg_idx][0])
+            sy = path[seg_idx][1] + t * (path[seg_idx + 1][1] - path[seg_idx][1])
+
+            px = (sx - bx) / bbox_w * w
+            py = (sy - by) / bbox_h * h
+            pi = int(round(py))
+            pj = int(round(px))
+
+            if 0 <= pi < h and 0 <= pj < w:
+                gx = dx_arr[pi, pj]
+                gy = dy_arr[pi, pj]
+                mag = math.hypot(gx, gy)
+                if mag > 1e-9:
+                    arrows.append(((sx, sy), (gx / mag, gy / mag)))
+
+    return arrows
+
+
+def _draw_elevation_shading(
+    dwg: svgwrite.Drawing,
+    group: svgwrite.container.Group,
+    png_bytes: bytes,
+    bbox: tuple[float, float, float, float],
+    green_ring: list[list[float]],
+    rotate_angle: float = 0.0,
+    rotate_cx: float = 0.0,
+    rotate_cy: float = 0.0,
+    contour_paths: list[list[list[float]]] | None = None,
+    show_heightmap: bool = True,
+    show_contours: bool = True,
+    show_arrows: bool = True,
+) -> None:
+    """Draw elevation shading as an SVG <image> clipped to the green polygon.
+
+    png_bytes: PNG bytes of the grayscale shading image (unrotated, covers
+        the projected geographic bounding box).
+    bbox: (min_x, min_y, max_x, max_y) of the projected geographic bbox
+        in SVG space — not the fitted polygon bbox.
+    green_ring: fitted green polygon vertices — used for clipPath.
+    rotate_angle: rotation angle (degrees) matching fit_hole so the
+        shading aligns with the green.
+    rotate_cx, rotate_cy: rotation centre in SVG space (green centroid).
+    """
+    import base64
+
+    if len(green_ring) < 3:
+        return
+
+    bx, by, bx2, by2 = bbox
+    bw, bh = bx2 - bx, by2 - by
+    if bw <= 0 or bh <= 0:
+        return
+
+    clip_id = f"green-clip-{id(png_bytes)}"
+    defs = dwg.defs
+    clip = defs.add(dwg.clipPath(id=clip_id))
+    pts = [(float(x), float(y)) for x, y in green_ring]
+    clip.add(dwg.polygon(points=pts))
+
+    b64 = base64.b64encode(png_bytes).decode("ascii")
+    data_uri = f"data:image/png;base64,{b64}"
+
+    outer = group.add(dwg.g(clip_path=f"url(#{clip_id})"))
+    inner = outer.add(dwg.g(transform=f"rotate({rotate_angle}, {rotate_cx}, {rotate_cy})"))
+    if show_heightmap:
+        inner.add(dwg.image(
+            href=data_uri,
+            insert=(bx, by),
+            size=(bw, bh),
+            opacity="0.5",
+        ))
+    if show_contours and contour_paths:
+        for path in contour_paths:
+            if len(path) >= 2:
+                d = "M " + " ".join(f"{p[0]:.2f},{p[1]:.2f}" for p in path)
+                inner.add(dwg.path(d=d, stroke="#000000", stroke_width=_STROKE_WIDTH, fill="none"))
+
+    if show_arrows and contour_paths:
+        arrow_color = _COLOURS["green"][0]
+        arrows = _compute_arrows(png_bytes, bbox, contour_paths, spacing=12.0)
+        for (cx, cy), (dx, dy) in arrows:
+            angle = math.atan2(dy, dx)
+            leg_len = 5.0
+            half_angle = math.radians(30)
+            lx = cx + leg_len * math.cos(angle - half_angle)
+            ly = cy + leg_len * math.sin(angle - half_angle)
+            rx = cx + leg_len * math.cos(angle + half_angle)
+            ry = cy + leg_len * math.sin(angle + half_angle)
+            inner.add(dwg.polyline(
+                points=[(lx, ly), (cx, cy), (rx, ry)],
+                stroke=arrow_color, stroke_width=0.75, fill="none",
+            ))
+            shaft_len = 10.0
+            inner.add(dwg.line(
+                start=(cx, cy),
+                end=(cx + dx * shaft_len, cy + dy * shaft_len),
+                stroke=arrow_color, stroke_width=0.75,
+            ))
+
+
+def _draw_green_grid(
+    dwg: svgwrite.Drawing,
+    ch: float,
+    cw: float,
+    x_offset: float,
+) -> None:
+    """Original 6x6 ruled green grid (fallback)."""
     grid_step = ch / 6
     for i in range(1, 6):
         dwg.add(dwg.line(
-            start=(x_offset + i * grid_step, 0), end=(x_offset + i * grid_step, ch),
-            stroke="#999", stroke_width=0.3,
+            start=(x_offset + i * grid_step, 0),
+            end=(x_offset + i * grid_step, ch),
+            stroke="#000000", stroke_width=0.3,
         ))
         dwg.add(dwg.line(
-            start=(0, i * grid_step), end=(cw, i * grid_step),
-            stroke="#999", stroke_width=0.3,
+            start=(0, i * grid_step),
+            end=(cw, i * grid_step),
+            stroke="#000000", stroke_width=0.3,
         ))
-
-    return dwg.tostring()
 
 
 def render_hole_svg(course_name: str, hole_number: int, settings: dict | None = None) -> str:

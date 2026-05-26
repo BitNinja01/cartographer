@@ -17,7 +17,7 @@ class CartographerPlugin(PinSheetPlugin):
     """Adds course geometry, hole diagrams, and yardage book generation to PinSheet."""
 
     name = "cartographer"
-    version = "1.1.2"
+    version = "1.2.0"
 
     def __init__(self) -> None:
         super().__init__()
@@ -60,6 +60,9 @@ class CartographerPlugin(PinSheetPlugin):
         return {
             "cartographer.yardage_arcs": True,
             "cartographer.yardage_arc_distances": [100, 125, 150, 175, 200],
+            "cartographer.green_heightmap": True,
+            "cartographer.green_contours": True,
+            "cartographer.green_arrows": True,
         }
 
     def on_course_saved(self, course_name: str, course_data: dict) -> None:
