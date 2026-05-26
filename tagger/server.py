@@ -116,6 +116,32 @@ def _expand_split_features(features: list[dict]) -> list[dict]:
     return result
 
 
+def _derive_assignments(holes: dict, expanded_features: list[dict]) -> dict:
+    """Derive featureAssignments from stored hole data.
+
+    Matches feature IDs in the stored per-hole geometry dicts against
+    the expanded feature list (which includes synthetic sub-feature IDs).
+
+    Returns: {osm_id: hole_number} suitable for the frontend.
+    """
+    assignments = {}
+    id_to_feature = {f["osm_id"]: f for f in expanded_features}
+
+    for hole_key, hole_data in holes.items():
+        hole_num = int(hole_key)
+        for ftype in ("fairway", "green", "bunkers", "water",
+                      "waterways", "paths", "rough_boundary"):
+            items = hole_data.get(ftype, [])
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict) and "id" in item:
+                        fid = item["id"]
+                        if fid in id_to_feature:
+                            assignments[fid] = hole_num
+
+    return assignments
+
+
 _STATIC_DIR = Path(__file__).parent / "static"
 
 
@@ -279,6 +305,14 @@ def start_tagger(course_name: str, osm_path: Path) -> threading.Event:
         _apply_splits(features, app.config["split_lines"])
 
         return jsonify({"status": "ok", "removed": split_id})
+
+    @app.route("/api/assignments")
+    def get_assignments():
+        """Return existing feature assignments derived from saved hole data."""
+        existing = load_courses_geo_raw().get(course_name, {})
+        holes = existing.get("holes", {})
+        expanded = _expand_split_features(features)
+        return jsonify(_derive_assignments(holes, expanded))
 
     port = 5173
     threading.Timer(0.8, lambda: webbrowser.open(f"http://localhost:{port}")).start()
