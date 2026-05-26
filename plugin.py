@@ -60,6 +60,9 @@ class CartographerPlugin(PinSheetPlugin):
         return {
             "cartographer.yardage_arcs": True,
             "cartographer.yardage_arc_distances": [100, 125, 150, 175, 200],
+            "cartographer.green_heightmap": True,
+            "cartographer.green_contours": True,
+            "cartographer.green_arrows": True,
         }
 
     def on_course_saved(self, course_name: str, course_data: dict) -> None:
