@@ -5,7 +5,7 @@ from pathlib import Path
 
 from cartographer.data import (
     _get_plugin_data_dir, get_plugin_data_dir, get_osm_path,
-    load_courses_geo, save_courses_geo,
+    load_courses_geo, load_courses_geo_raw, save_courses_geo,
 )
 
 
@@ -142,3 +142,87 @@ class TestSaveCoursesGeo:
         }
         save_courses_geo(data)
         assert json.loads((tmp_path / "courses_geo.json").read_text()) == data
+
+
+class TestLoadCoursesGeoNormalized:
+    """load_courses_geo — returns bare ring lists."""
+
+    def test_old_format_passthrough(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("cartographer.data._get_plugin_data_dir", lambda: tmp_path)
+        data = {
+            "Course": {
+                "holes": {
+                    "1": {"green": [[[0, 0], [10, 0], [10, 10]]]},
+                    "2": {"fairway": [[[0, 0], [20, 0], [20, 20]]]},
+                }
+            }
+        }
+        (tmp_path / "courses_geo.json").write_text(json.dumps(data))
+        result = load_courses_geo()
+        assert result["Course"]["holes"]["1"]["green"] == [[[0, 0], [10, 0], [10, 10]]]
+
+    def test_new_format_extracts_rings(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("cartographer.data._get_plugin_data_dir", lambda: tmp_path)
+        data = {
+            "Course": {
+                "splits": {"1": [[0, 0], [1, 1]]},
+                "holes": {
+                    "7": {
+                        "green": [
+                            {"id": "way/501234__0", "rings": [[[0, 0], [10, 0], [10, 10]]]},
+                            {"id": "way/502345", "rings": [[[5, 5], [15, 5], [15, 15]]]},
+                        ]
+                    }
+                }
+            }
+        }
+        (tmp_path / "courses_geo.json").write_text(json.dumps(data))
+        result = load_courses_geo()
+        green = result["Course"]["holes"]["7"]["green"]
+        assert green == [[[[0, 0], [10, 0], [10, 10]]], [[[5, 5], [15, 5], [15, 15]]]]
+
+    def test_load_courses_geo_preserves_tee_boxes(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("cartographer.data._get_plugin_data_dir", lambda: tmp_path)
+        data = {
+            "Course": {
+                "holes": {
+                    "1": {"tee_boxes": {"white": [0, 0], "blue": [1, 1]}}
+                }
+            }
+        }
+        (tmp_path / "courses_geo.json").write_text(json.dumps(data))
+        result = load_courses_geo()
+        assert result["Course"]["holes"]["1"]["tee_boxes"] == {"white": [0, 0], "blue": [1, 1]}
+
+    def test_handles_empty_hole(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("cartographer.data._get_plugin_data_dir", lambda: tmp_path)
+        data = {"Course": {"holes": {"1": {}}}}
+        (tmp_path / "courses_geo.json").write_text(json.dumps(data))
+        result = load_courses_geo()
+        hole = result["Course"]["holes"]["1"]
+        assert hole == {}
+
+
+class TestLoadCoursesGeoRaw:
+    """load_courses_geo_raw — preserves IDs and splits."""
+
+    def test_preserves_ids(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("cartographer.data._get_plugin_data_dir", lambda: tmp_path)
+        data = {
+            "Course": {
+                "splits": {"1": [[0, 0], [1, 1]]},
+                "holes": {
+                    "7": {
+                        "green": [
+                            {"id": "way/501234__0", "rings": [[[0, 0], [10, 0], [10, 10]]]},
+                        ]
+                    }
+                }
+            }
+        }
+        (tmp_path / "courses_geo.json").write_text(json.dumps(data))
+        result = load_courses_geo_raw()
+        assert result["Course"]["splits"] == {"1": [[0, 0], [1, 1]]}
+        green = result["Course"]["holes"]["7"]["green"]
+        assert green[0]["id"] == "way/501234__0"
+        assert green[0]["rings"] == [[[0, 0], [10, 0], [10, 10]]]
