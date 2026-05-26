@@ -208,7 +208,7 @@ def _get_hole_render_data(
         shading_data = None
         greens = slot_fitted.get("green", [])
         contour_paths = []
-        if dem_path is not None and greens and (show_contours or show_arrows):
+        if dem_path is not None and greens and (show_heightmap or show_contours or show_arrows):
             orig_greens = holes_geo[hole_key].get("green", [])
             if orig_greens:
                 if status_callback and (contour_cache is None or hole_num not in contour_cache):
