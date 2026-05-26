@@ -43,10 +43,17 @@ def _draw_polygons(
     stroke: str,
     fill: str,
     stroke_width: float | None = None,
+    stroke_opacity: float | None = None,
+    stroke_dasharray: str | None = None,
 ) -> None:
     """Draw a list of polygon rings onto a svgwrite group."""
     if stroke_width is None:
         stroke_width = _STROKE_WIDTH
+    style: dict[str, str] = {}
+    if stroke_opacity is not None:
+        style["stroke-opacity"] = str(stroke_opacity)
+    if stroke_dasharray is not None:
+        style["stroke-dasharray"] = stroke_dasharray
     for ring in rings:
         if len(ring) < 3:
             continue
@@ -57,6 +64,7 @@ def _draw_polygons(
             fill=fill,
             stroke_width=stroke_width,
             fill_rule="evenodd",
+            style=";".join(f"{k}:{v}" for k, v in style.items()) if style else None,
         ))
 
 
@@ -211,12 +219,11 @@ def render_green(
     g = dwg.g(transform=f"translate({x_offset}, 0)")
     if shading_data is not None:
         for feature_type in ("rough_boundary", "fairway", "water", "bunkers"):
-            s, f = _COLOURS[feature_type]
-            if feature_type == "rough_boundary":
-                f = _COLOURS["fairway"][1]
+            s, _ = _COLOURS[feature_type]
             rings = raw.get(feature_type, [])
             if rings:
-                _draw_polygons(dwg, g, rings, stroke=s, fill=f)
+                _draw_polygons(dwg, g, rings, stroke=s, fill="white",
+                               stroke_opacity=0.5, stroke_dasharray="4,4")
         stroke_col_p, _ = _COLOURS["paths"]
         path_lines = raw.get("paths", [])
         if path_lines:
