@@ -401,7 +401,7 @@
 
   <div id="controls">
     <button id="btn-split-mode">Split Mode</button>
-    <button id="btn-undo-split" style="display:none;">Undo Split</button>
+    <button id="btn-undo" style="display:none;">Undo</button>
     <button id="btn-save">Save &amp; Close</button>
   </div>
 </div>
@@ -423,7 +423,7 @@
   const activeFilters = new Set(['fairway','green','bunker','water','waterway','path','tee']);
   let allFeatures = [];
   let splitModeActive = false;
-  let lastSplitId = null;
+  let lastAction = null;
   const splitMarkers = [];
   const splitLineLayers = [];
 
@@ -490,8 +490,8 @@
       body: JSON.stringify([[p1.lat, p1.lng], [p2.lat, p2.lng]]),
     }).then(r => r.json()).then(data => {
       if (data.split_id) {
-        lastSplitId = data.split_id;
-        document.getElementById('btn-undo-split').style.display = '';
+        lastAction = {type: 'split', splitId: data.split_id};
+        document.getElementById('btn-undo').style.display = '';
 
         const line = L.polyline([p1, p2], {
           color: '#e53935', weight: 2, dashArray: '8 4',
@@ -544,14 +544,18 @@
               if (splitModeActive) return;
               if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;
               if (featureAssignments[id]) {
+                lastAction = {type: 'unassign', id: id, hole: featureAssignments[id]};
                 delete featureAssignments[id];
                 map.addLayer(layer);
+                document.getElementById('btn-undo').style.display = '';
                 renderFeatureList(allFeatures);
                 return;
               }
               if (currentHole >= 1 && currentHole <= 18) {
+                lastAction = {type: 'assign', id: id};
                 featureAssignments[id] = currentHole;
                 map.removeLayer(layer);
+                document.getElementById('btn-undo').style.display = '';
                 renderFeatureList(allFeatures);
               }
             });
@@ -618,17 +622,33 @@
     }
   });
 
-  document.getElementById('btn-undo-split').onclick = () => {
-    if (lastSplitId === null) return;
-    fetch(`/api/splits/${lastSplitId}`, {method: 'DELETE'})
-      .then(r => r.json())
-      .then(data => {
-        if (data.status === 'ok') {
-          lastSplitId = null;
-          document.getElementById('btn-undo-split').style.display = 'none';
-          refreshFeatures();
-        }
-      });
+  document.getElementById('btn-undo').onclick = () => {
+    if (!lastAction) return;
+    const btn = document.getElementById('btn-undo');
+
+    if (lastAction.type === 'split') {
+      fetch(`/api/splits/${lastAction.splitId}`, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+          if (data.status === 'ok') {
+            lastAction = null;
+            btn.style.display = 'none';
+            refreshFeatures();
+          }
+        });
+    } else if (lastAction.type === 'assign') {
+      delete featureAssignments[lastAction.id];
+      if (layers[lastAction.id]) map.addLayer(layers[lastAction.id]);
+      renderFeatureList(allFeatures);
+      lastAction = null;
+      btn.style.display = 'none';
+    } else if (lastAction.type === 'unassign') {
+      featureAssignments[lastAction.id] = lastAction.hole;
+      if (layers[lastAction.id]) map.removeLayer(layers[lastAction.id]);
+      renderFeatureList(allFeatures);
+      lastAction = null;
+      btn.style.display = 'none';
+    }
   };
 
   // Load existing assignments from saved data (survives page reload)
@@ -689,14 +709,18 @@
             if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;  // course-wide, not per-hole
 
             if (featureAssignments[id]) {
+              lastAction = {type: 'unassign', id: id, hole: featureAssignments[id]};
               delete featureAssignments[id];
               map.addLayer(layer);
+              document.getElementById('btn-undo').style.display = '';
               renderFeatureList(allFeatures);
               return;
             }
             if (currentHole >= 1 && currentHole <= 18) {
+              lastAction = {type: 'assign', id: id};
               featureAssignments[id] = currentHole;
               map.removeLayer(layer);
+              document.getElementById('btn-undo').style.display = '';
               renderFeatureList(allFeatures);
             }
           });
@@ -744,13 +768,17 @@
 
       div.onclick = () => {
           if (hole) {
+            lastAction = {type: 'unassign', id: id, hole: hole};
             delete featureAssignments[id];
             if (layers[id]) map.addLayer(layers[id]);
+            document.getElementById('btn-undo').style.display = '';
             renderFeatureList(allFeatures);
           } else {
             if (currentHole >= 1 && currentHole <= 18) {
+              lastAction = {type: 'assign', id: id};
               featureAssignments[id] = currentHole;
               if (layers[id]) map.removeLayer(layers[id]);
+              document.getElementById('btn-undo').style.display = '';
               renderFeatureList(allFeatures);
             }
             if (layers[id]) {
