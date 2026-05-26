@@ -223,7 +223,11 @@ def render_hole_page(
         insert=(hn_rect_x, hn_rect_y),
         size=(hn_rect_w, hn_rect_h),
         fill="white",
-        stroke="none",
+        fill_opacity=1.0,
+        stroke="#000000",
+        stroke_width=0.5,
+        rx=3,
+        ry=3,
     ))
 
     # Circle: centred in rect horizontally, pad from rect top

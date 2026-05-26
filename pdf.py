@@ -32,9 +32,9 @@ from cartographer.layout import (
     flip_page_svg, PAGE_W, PAGE_CONTENT_H, SLOT_H, PRINTABLE_W, MARGIN
 )
 
-HOLE_CANVAS_W = 306.0   # 4.25 * 72
-HOLE_CANVAS_H = 504.0   # 7" for hole diagram section
-HOLE_LEFT_BIAS = 50.0   # pts — shift hole leftward on top pages; clamped to padding floor in fit_hole()
+HOLE_CANVAS_W = 270.0   # PRINTABLE_W
+HOLE_CANVAS_H = 486.0   # PAGE_CONTENT_H
+HOLE_LEFT_BIAS = 44.0   # pts — shift hole leftward on top pages; clamped to padding floor in fit_hole()
 
 
 def _svg_to_pdf_bytes(svg_string: str) -> bytes:

@@ -31,9 +31,9 @@ _COLOURS = {
 _STROKE_WIDTH = 0.644586
 
 # Hole layout canvas size (SVG user units = points at 72dpi, 4.25" wide)
-HOLE_CANVAS_W = 306.0   # 4.25 * 72
-HOLE_CANVAS_H = 504.0   # 7" for hole diagram section
-HOLE_LEFT_BIAS = 100.0  # pts — shift hole leftward; clamped to padding floor in fit_hole()
+HOLE_CANVAS_W = 270.0   # PRINTABLE_W
+HOLE_CANVAS_H = 486.0   # PAGE_CONTENT_H
+HOLE_LEFT_BIAS = 45.0  # pts — shift hole leftward; clamped to padding floor in fit_hole()
 
 
 def _draw_polygons(
@@ -153,7 +153,7 @@ def render_hole(
                 r=float(r),
                 fill="none",
                 stroke="#000000",
-                stroke_width=0.25,
+                stroke_width=0.5,
                 stroke_dasharray="3,3",
             ))
         if arcs:
