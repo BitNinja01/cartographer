@@ -10,6 +10,88 @@ from flask import Flask, jsonify, request, send_from_directory
 from cartographer.data import get_osm_path, load_courses_geo, save_courses_geo
 from cartographer.osm import parse_osm_file, fetch_osm_features
 
+from shapely.geometry import LineString, Polygon, MultiPolygon, Point
+from shapely.ops import split as shapely_split
+
+
+def _feature_to_shapely(feature: dict):
+    """Convert an OSM feature dict to a shapely geometry (lon,lat coords)."""
+    coords = [(pt[1], pt[0]) for pt in feature["geometry"]]
+    if feature["is_point"]:
+        return Point(coords[0])
+    if len(coords) < 3:
+        return Point(coords[0])
+    if feature["type"] in ("path", "waterway"):
+        from shapely.geometry import LineString as LS
+        return LS(coords)
+    first = coords[0]
+    last = coords[-1]
+    if abs(first[0] - last[0]) > 1e-9 or abs(first[1] - last[1]) > 1e-9:
+        return Polygon(coords)
+    return Polygon(coords)
+
+
+def _shapely_to_geojson_rings(geom) -> list[list[list[float]]]:
+    """Convert a shapely Polygon or MultiPolygon to GeoJSON ring coords.
+
+    Returns rings in [lat, lon] order (matching OSM convention).
+    """
+    if isinstance(geom, Polygon):
+        return [[[lat, lon] for lon, lat in geom.exterior.coords]]
+    if isinstance(geom, MultiPolygon):
+        rings = []
+        for poly in geom.geoms:
+            rings.append([[lat, lon] for lon, lat in poly.exterior.coords])
+        return rings
+    return []
+
+
+def _apply_splits(features: list[dict], split_lines: dict) -> list[dict]:
+    """Apply split lines to features.
+
+    For each split line, clips any intersecting non-course-wide feature.
+    Clipped pieces are stored in `_split_pieces` as GeoJSON-ready
+    coordinate lists. Pieces with area < 1% of original are discarded.
+
+    Args:
+        features: list of OSM feature dicts with osm_id, type, geometry, is_point, tags.
+        split_lines: {split_id: ((lat1, lon1), (lat2, lon2))}
+
+    Returns:
+        The same features list, mutated in-place with _split_pieces added
+        to intersected features.
+    """
+    course_wide = {"water", "waterway", "path"}
+
+    for split_id, (p1, p2) in split_lines.items():
+        split_line = LineString([(p1[1], p1[0]), (p2[1], p2[0])])  # lon,lat
+
+        for feature in features:
+            if feature["type"] in course_wide or feature["is_point"]:
+                continue
+
+            geom = _feature_to_shapely(feature)
+            if isinstance(geom, Point):
+                continue
+
+            if not split_line.intersects(geom):
+                continue
+
+            pieces = list(shapely_split(geom, split_line).geoms)
+            if len(pieces) < 2:
+                continue
+
+            total_area = geom.area
+            min_area = total_area * 0.01 if total_area > 0 else 0
+
+            feature["_split_pieces"] = []
+            for piece in pieces:
+                if isinstance(piece, (Polygon, MultiPolygon)) and piece.area >= min_area:
+                    feature["_split_pieces"].append(_shapely_to_geojson_rings(piece))
+
+    return features
+
+
 _STATIC_DIR = Path(__file__).parent / "static"
 
 
