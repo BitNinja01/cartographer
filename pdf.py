@@ -421,9 +421,7 @@ def generate_book(
     holes_geo = course_geo.get("holes", {})
     scale_data = course_geo.get("scale", {})
 
-    if status_callback:
-        status_callback("Downloading elevation data...")
-    dem_path = get_course_dem(course_name, holes_geo)
+    dem_path = get_course_dem(course_name, holes_geo, status_callback=status_callback)
 
     safe_course = course_name.lower().replace(" ", "_").replace("'", "").replace('"', "")
 

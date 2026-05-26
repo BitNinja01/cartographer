@@ -110,7 +110,11 @@ def _upsample_mask(mask: np.ndarray, factor: int = 4) -> np.ndarray:
     return np.array(img_big, dtype=bool)
 
 
-def get_course_dem(course_name: str, holes_geo: dict) -> Path | None:
+def get_course_dem(
+    course_name: str,
+    holes_geo: dict,
+    status_callback: callable | None = None,
+) -> Path | None:
     """Download/cache the 1m DEM covering all green bounding boxes.
     Returns path to cached GeoTIFF or None if unavailable."""
     from cartographer.data import get_dem_path
@@ -127,7 +131,9 @@ def get_course_dem(course_name: str, holes_geo: dict) -> Path | None:
     if url is None:
         return None
 
-    _download_file(url, cache_path)
+    if status_callback:
+        status_callback("Downloading elevation data...")
+    _download_file(url, cache_path, status_callback=status_callback)
     return cache_path if cache_path.exists() else None
 
 
@@ -179,14 +185,29 @@ def _search_tnm(bounds: tuple[float, float, float, float]) -> str | None:
         return None
 
 
-def _download_file(url: str, dest: Path) -> None:
+def _download_file(
+    url: str,
+    dest: Path,
+    status_callback: callable | None = None,
+) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
         resp = requests.get(url, stream=True, timeout=120)
         resp.raise_for_status()
+        total = int(resp.headers.get("Content-Length", 0))
+        downloaded = 0
         with open(dest, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
                 f.write(chunk)
+                if total and status_callback:
+                    downloaded += len(chunk)
+                    mb_done = downloaded / (1024 * 1024)
+                    mb_total = total / (1024 * 1024)
+                    pct = downloaded * 100 // total
+                    status_callback(
+                        f"Downloading elevation data: "
+                        f"{mb_done:.1f} MB of {mb_total:.0f} MB ({pct}%)"
+                    )
     except requests.RequestException:
         if dest.exists():
             dest.unlink()
