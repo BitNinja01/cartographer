@@ -756,18 +756,18 @@
         const type = f.properties.type;
         const hole = featureAssignments[id];
 
-        // Water and paths are course-wide — auto-distribute to all 18 holes
+        // Water and paths are course-wide -- auto-distribute to all 18 holes
         if (type === 'water' || type === 'waterway' || type === 'path') {
           const targetHoles = Object.keys(holes);
           if (geom.type === 'Polygon' && type === 'water') {
             const ring = geom.coordinates[0].map(c => [c[1], c[0]]);
-            targetHoles.forEach(hk => holes[hk].water.push(ring));
+            targetHoles.forEach(hk => holes[hk].water.push({"id": id, "rings": ring}));
           } else if (geom.type === 'LineString' && type === 'waterway') {
             const line = geom.coordinates.map(c => [c[1], c[0]]);
-            targetHoles.forEach(hk => holes[hk].waterways.push(line));
+            targetHoles.forEach(hk => holes[hk].waterways.push({"id": id, "rings": line}));
           } else if (geom.type === 'LineString' && type === 'path') {
             const line = geom.coordinates.map(c => [c[1], c[0]]);
-            targetHoles.forEach(hk => holes[hk].paths.push(line));
+            targetHoles.forEach(hk => holes[hk].paths.push({"id": id, "rings": line}));
           }
           return;
         }
@@ -779,16 +779,18 @@
           holes[hk].tee_boxes[teeColour] = [geom.coordinates[1], geom.coordinates[0]];
         } else if (geom.type === 'Polygon') {
           const ring = geom.coordinates[0].map(c => [c[1], c[0]]);
-          if (type === 'fairway') holes[hk].fairway.push(ring);
-          else if (type === 'green') holes[hk].green.push(ring);
-          else if (type === 'bunker') holes[hk].bunkers.push(ring);
-          else if (type === 'water') holes[hk].water.push(ring);
-          else if (type === 'rough') holes[hk].rough_boundary.push(ring);
-          else if (type === 'tee') holes[hk].rough_boundary.push(ring);
+          const item = {"id": id, "rings": ring};
+          if (type === 'fairway') holes[hk].fairway.push(item);
+          else if (type === 'green') holes[hk].green.push(item);
+          else if (type === 'bunker') holes[hk].bunkers.push(item);
+          else if (type === 'water') holes[hk].water.push(item);
+          else if (type === 'rough') holes[hk].rough_boundary.push(item);
+          else if (type === 'tee') holes[hk].rough_boundary.push(item);
         } else if (geom.type === 'LineString') {
           const line = geom.coordinates.map(c => [c[1], c[0]]);
-          if (type === 'path') holes[hk].paths.push(line);
-          else if (type === 'waterway') holes[hk].waterways.push(line);
+          const item = {"id": id, "rings": line};
+          if (type === 'path') holes[hk].paths.push(item);
+          else if (type === 'waterway') holes[hk].waterways.push(item);
         }
       });
 
