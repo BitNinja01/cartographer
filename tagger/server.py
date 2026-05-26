@@ -16,18 +16,14 @@ from shapely.ops import split as shapely_split
 
 def _feature_to_shapely(feature: dict):
     """Convert an OSM feature dict to a shapely geometry (lon,lat coords)."""
-    coords = [(pt[1], pt[0]) for pt in feature["geometry"]]
     if feature["is_point"]:
-        return Point(coords[0])
+        return Point(feature["geometry"][1], feature["geometry"][0])
+    coords = [(pt[1], pt[0]) for pt in feature["geometry"]]
     if len(coords) < 3:
         return Point(coords[0])
     if feature["type"] in ("path", "waterway"):
         from shapely.geometry import LineString as LS
         return LS(coords)
-    first = coords[0]
-    last = coords[-1]
-    if abs(first[0] - last[0]) > 1e-9 or abs(first[1] - last[1]) > 1e-9:
-        return Polygon(coords)
     return Polygon(coords)
 
 
