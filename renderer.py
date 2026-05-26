@@ -189,7 +189,7 @@ def render_green(
     )
     dwg.add(dwg.rect(insert=(0, 0), size=(cw, ch), fill="white"))
 
-    x_offset = (cw - ch) / 2
+    x_offset = (cw - ch) / 2 if not fitted else 0
 
     if fitted:
         raw = {"green": green_geom.get("green", []),

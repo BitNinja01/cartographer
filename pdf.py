@@ -158,10 +158,11 @@ def _get_hole_render_data(
             rh = rmax_y - rmin_y or 1.0
 
             padding = 15.0
-            avail = SLOT_H - 2 * padding
-            slot_scale = min(avail / rw, avail / rh)
-            off_x = padding + (avail - rw * slot_scale) / 2 - rmin_x * slot_scale
-            off_y = padding + (avail - rh * slot_scale) / 2 - rmin_y * slot_scale
+            avail_w = PRINTABLE_W - 2 * padding
+            avail_h = SLOT_H - 2 * padding
+            slot_scale = min(avail_w / rw, avail_h / rh)
+            off_x = padding + (avail_w - rw * slot_scale) / 2 - rmin_x * slot_scale
+            off_y = padding + (avail_h - rh * slot_scale) / 2 - rmin_y * slot_scale
 
             slot_fitted: dict[str, list] = {
                 ft: [] for ft in ("fairway", "water", "bunkers",
@@ -293,12 +294,12 @@ def _get_hole_render_data(
 
     if compute_slots and slot1_mode == "green_grid":
         slot1_svg = render_green(
-            slot_fitted, canvas_w=PAGE_W, canvas_h=SLOT_H,
+            slot_fitted, canvas_w=PRINTABLE_W, canvas_h=SLOT_H,
             fitted=True, shading_data=shading_data,
         )
     if compute_slots and slot2_mode == "green_grid":
         slot2_svg = render_green(
-            slot_fitted, canvas_w=PAGE_W, canvas_h=SLOT_H,
+            slot_fitted, canvas_w=PRINTABLE_W, canvas_h=SLOT_H,
             fitted=True, shading_data=shading_data,
         )
 

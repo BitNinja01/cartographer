@@ -348,8 +348,8 @@ def _render_slot(
         if svg_content:
             dwg.add(dwg.image(
                 href=_svg_to_png_data_uri(svg_content),
-                insert=(x + width / 2 - height / 2, y),
-                size=(height, height),
+                insert=(x, y),
+                size=(width, height),
             ))
 
     elif content_type == "stats_panel":
