@@ -538,3 +538,73 @@ class TestFindOverviewRotation:
         points = [(x, y) for x in range(0, 201, 20) for y in range(0, 51, 10)]
         angle = find_overview_rotation(points, 270, 390, padding=10.0)
         assert self._scale_at(points, angle) >= self._scale_at(points, 0.0)
+
+
+# ---------------------------------------------------------------------------
+# _apply_splits — server-side polygon clipping
+# ---------------------------------------------------------------------------
+
+from cartographer.tagger.server import _apply_splits
+
+
+class TestApplySplits:
+
+    def _make_feature(self, osm_id, ftype, coords):
+        return {
+            "osm_id": osm_id,
+            "type": ftype,
+            "geometry": coords,
+            "is_point": False,
+            "tags": {},
+        }
+
+    def test_splits_simple_polygon(self):
+        features = [
+            self._make_feature("way/1", "fairway", [
+                [0, 0], [0, 10], [10, 10], [10, 0], [0, 0]
+            ]),
+        ]
+        split_lines = {"1": ((5, -1), (5, 11))}
+        result = _apply_splits(features, split_lines)
+        assert "_split_pieces" in result[0]
+        assert len(result[0]["_split_pieces"]) == 2
+
+    def test_grazing_line_does_not_split(self):
+        features = [
+            self._make_feature("way/1", "fairway", [
+                [0, 0], [0, 10], [10, 10], [10, 0], [0, 0]
+            ]),
+        ]
+        split_lines = {"1": ((10, 0), (10, 1))}
+        result = _apply_splits(features, split_lines)
+        assert "_split_pieces" not in result[0]
+
+    def test_course_wide_features_excluded(self):
+        features = [
+            self._make_feature("way/1", "water", [
+                [0, 0], [0, 10], [10, 10], [10, 0], [0, 0]
+            ]),
+        ]
+        split_lines = {"1": ((5, -1), (5, 11))}
+        result = _apply_splits(features, split_lines)
+        assert "_split_pieces" not in result[0]
+
+    def test_discards_slivers(self):
+        features = [
+            self._make_feature("way/1", "fairway", [
+                [0, 0], [0, 10], [10, 10], [10, 0], [0, 0]
+            ]),
+        ]
+        split_lines = {"1": ((0.02, 0), (0.02, 10))}
+        result = _apply_splits(features, split_lines)
+        pieces = result[0].get("_split_pieces", [])
+        assert len(pieces) <= 1
+
+    def test_no_splits_returns_unchanged(self):
+        features = [
+            self._make_feature("way/1", "fairway", [
+                [0, 0], [0, 10], [10, 10], [10, 0], [0, 0]
+            ]),
+        ]
+        result = _apply_splits(features, {})
+        assert "_split_pieces" not in result[0]
