@@ -703,15 +703,23 @@
       const hole = featureAssignments[id];
       const div = document.createElement('div');
       const isCourseWide = (type === 'water' || type === 'waterway' || type === 'path');
-      if (isCourseWide) return;  // auto-injected to all holes — don't clutter the list
+      if (isCourseWide) return;
 
       div.className = 'feature-item' + (hole ? ' assigned' : '');
-      
+
+      let label = type;
+      if (f.properties.split_group) {
+        const idx = id.split('__')[1];
+        if (idx !== undefined) {
+          label = type + ' (' + String.fromCharCode(65 + parseInt(idx)) + ')';
+        }
+      }
+
       const holeBadge = hole ? `<span class="hole-badge">H${hole}</span>` : '';
 
       div.innerHTML = `
         ${holeBadge}
-        <span class="type-badge type-${type}">${type}</span>
+        <span class="type-badge type-${type}">${label}</span>
         <span class="feature-meta">#${id}</span>
       `;
 
