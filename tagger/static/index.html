@@ -401,6 +401,7 @@
 
   <div id="controls">
     <button id="btn-split-mode">Split Mode</button>
+    <button id="btn-undo-split" style="display:none;">Undo Split</button>
     <button id="btn-save">Save &amp; Close</button>
   </div>
 </div>
@@ -422,6 +423,7 @@
   const activeFilters = new Set(['fairway','green','bunker','water','waterway','path','tee']);
   let allFeatures = [];
   let splitModeActive = false;
+  let lastSplitId = null;
   const splitMarkers = [];
   const splitLineLayers = [];
 
@@ -488,6 +490,9 @@
       body: JSON.stringify([[p1.lat, p1.lng], [p2.lat, p2.lng]]),
     }).then(r => r.json()).then(data => {
       if (data.split_id) {
+        lastSplitId = data.split_id;
+        document.getElementById('btn-undo-split').style.display = '';
+
         const line = L.polyline([p1, p2], {
           color: '#e53935', weight: 2, dashArray: '8 4',
           interactive: false,
@@ -612,6 +617,19 @@
       addSplitLine(splitMarkers[0].getLatLng(), splitMarkers[1].getLatLng());
     }
   });
+
+  document.getElementById('btn-undo-split').onclick = () => {
+    if (lastSplitId === null) return;
+    fetch(`/api/splits/${lastSplitId}`, {method: 'DELETE'})
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === 'ok') {
+          lastSplitId = null;
+          document.getElementById('btn-undo-split').style.display = 'none';
+          refreshFeatures();
+        }
+      });
+  };
 
   // Load existing assignments from saved data (survives page reload)
   fetch('/api/assignments')
