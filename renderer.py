@@ -352,7 +352,7 @@ def _draw_elevation_shading(
     contour_paths: list[list[list[float]]] | None = None,
     show_heightmap: bool = True,
     show_contours: bool = True,
-    show_arrows: bool = False,
+    show_arrows: bool = True,
 ) -> None:
     """Draw elevation shading as an SVG <image> clipped to the green polygon.
 
