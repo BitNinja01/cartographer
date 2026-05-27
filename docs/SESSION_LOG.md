@@ -504,4 +504,19 @@ Resolved the remaining elevation shading rotation misalignment (Fix 2, Part B):
 - `docs/superpowers/specs/2026-05-26-multi-hole-features-design.md`
 - `docs/superpowers/plans/2026-05-26-multi-hole-features-plan.md`
 
-**Next**: Manual tagger testing with shared features, run real PDF generation, revisit arc labels
+**Next**: Manual tagger testing, run real PDF generation, cleanup git history
+
+## 2026-05-26 20:15 UTC
+
+**What was done**:
+- Built universal undo system: stack-based (LIFO), no limit, reverses splits/assignments/unassignments
+- Fixed bug: re-render features when exiting split mode to restore click interactivity
+- Undo button always visible, greyed out at 30% opacity when stack empty
+- Fixed JS syntax errors from partial pattern matching in replaceAll edits
+- Tested server endpoints (200 OK for /api/features and /api/assignments with 133 features)
+
+**Files touched**:
+- `tagger/static/index.html` — undo stack, refreshUndoButton handler, recording at 7 action points, CSS
+- `docs/HANDOFF.md` — updated next actions
+
+**Next**: Manual tagger testing, run real PDF generation, cleanup git history (squash f1cf2b5..0898a88)
