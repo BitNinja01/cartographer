@@ -556,12 +556,12 @@
   }
 
   function refreshFeatureStyles() {
-    featureAssignments.forEach((holes, id) => {
-      const layer = layers[id];
-      if (!layer) return;
-      const ftype = layer.feature ? layer.feature.properties.type : null;
+    Object.entries(layers).forEach(([id, layer]) => {
+      if (!layer || !layer.feature) return;
+      const ftype = layer.feature.properties.type;
       const baseColor = typeColours[ftype] || '#888';
-      if (holes.has(currentHole)) {
+      const holes = featureAssignments.get(id);
+      if (holes && holes.has(currentHole)) {
         layer.setStyle({color: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim(), weight: 3});
       } else {
         layer.setStyle({color: baseColor, weight: 2});
@@ -868,6 +868,7 @@
       `;
 
       div.onclick = () => {
+        if (reviewMode) return;
         if (assignmentMode === 'add') return;
         if (!featureAssignments.has(id) || !featureAssignments.get(id).has(currentHole)) return;
         undoStack.push({type: 'unassign', id: id, hole: currentHole});
