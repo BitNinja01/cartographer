@@ -450,6 +450,8 @@
     const el = document.getElementById('current-hole');
     el.textContent = hole >= 1 && hole <= 18 ? hole : '—';
     el.classList.toggle('invalid', hole < 1 || hole > 18);
+    refreshFeatureStyles();
+    renderFeatureList(allFeatures);
   }
 
   document.getElementById('btn-prev-hole').onclick = () => {
@@ -517,14 +519,26 @@
     });
   }
 
+  function refreshFeatureStyles() {
+    featureAssignments.forEach((holes, id) => {
+      const layer = layers[id];
+      if (!layer) return;
+      const ftype = layer.feature ? layer.feature.properties.type : null;
+      const baseColor = typeColours[ftype] || '#888';
+      if (holes.has(currentHole)) {
+        layer.setStyle({color: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim(), weight: 3});
+      } else {
+        layer.setStyle({color: baseColor, weight: 2});
+      }
+    });
+  }
+
   function refreshFeatures() {
     fetch('/api/features')
       .then(r => r.json())
       .then(data => {
-        // Remove old layers from map
         Object.values(layers).forEach(l => map.removeLayer(l));
         Object.keys(layers).forEach(k => delete layers[k]);
-        // Re-render from fresh feature data
         const geojsonLayer = L.geoJSON(data, {
           style: feature => {
             const ftype = feature.properties.type;
@@ -550,28 +564,27 @@
             layer.on('click', e => {
               if (splitModeActive) return;
               if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;
-              if (featureAssignments.has(id) && featureAssignments.get(id).has(currentHole)) {
-                _ensureSet(id).delete(currentHole);
-                undoStack.push({type: 'unassign', id: id, hole: currentHole});
-                if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
-                map.addLayer(layer);
-                renderFeatureList(allFeatures);
-                refreshUndoButton();
-                return;
-              }
-              if (currentHole >= 1 && currentHole <= 18) {
+              if (assignmentMode === 'add') {
                 undoStack.push({type: 'assign', id: id, hole: currentHole});
                 _ensureSet(id).add(currentHole);
-                map.removeLayer(layer);
                 renderFeatureList(allFeatures);
                 refreshUndoButton();
+                refreshFeatureStyles();
+              } else {
+                if (featureAssignments.has(id) && featureAssignments.get(id).has(currentHole)) {
+                  undoStack.push({type: 'unassign', id: id, hole: currentHole});
+                  featureAssignments.get(id).delete(currentHole);
+                  if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
+                  renderFeatureList(allFeatures);
+                  refreshUndoButton();
+                  refreshFeatureStyles();
+                }
               }
             });
           },
         }).addTo(map);
         allFeatures = data.features;
         renderFeatureList(allFeatures);
-        // Reload split lines from server
         fetch('/api/splits')
           .then(r => r.json())
           .then(data => {
@@ -586,12 +599,7 @@
             });
           });
 
-        featureAssignments.forEach((holes, id) => {
-          if (layers[id]) {
-            map.removeLayer(layers[id]);
-          }
-        });
-
+        refreshFeatureStyles();
 
       });
   }
@@ -653,14 +661,14 @@
     } else if (action.type === 'assign') {
       _ensureSet(action.id).delete(action.hole);
       if (featureAssignments.get(action.id).size === 0) featureAssignments.delete(action.id);
-      if (layers[action.id]) map.addLayer(layers[action.id]);
       renderFeatureList(allFeatures);
       refreshUndoButton();
+      refreshFeatureStyles();
     } else if (action.type === 'unassign') {
       _ensureSet(action.id).add(action.hole);
-      if (layers[action.id]) map.removeLayer(layers[action.id]);
       renderFeatureList(allFeatures);
       refreshUndoButton();
+      refreshFeatureStyles();
     }
   };
 
@@ -722,34 +730,30 @@
           }
           layers[id] = layer;
           layer.on('click', e => {
+            if (splitModeActive) return;
             const ftype = feature.properties.type;
-            if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;  // course-wide, not per-hole
-
-            if (featureAssignments.has(id) && featureAssignments.get(id).has(currentHole)) {
-              _ensureSet(id).delete(currentHole);
-              undoStack.push({type: 'unassign', id: id, hole: currentHole});
-              if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
-              map.addLayer(layer);
-              renderFeatureList(allFeatures);
-              refreshUndoButton();
-              return;
-            }
-            if (currentHole >= 1 && currentHole <= 18) {
+            if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;
+            if (assignmentMode === 'add') {
               undoStack.push({type: 'assign', id: id, hole: currentHole});
               _ensureSet(id).add(currentHole);
-              map.removeLayer(layer);
               renderFeatureList(allFeatures);
               refreshUndoButton();
+              refreshFeatureStyles();
+            } else {
+              if (featureAssignments.has(id) && featureAssignments.get(id).has(currentHole)) {
+                undoStack.push({type: 'unassign', id: id, hole: currentHole});
+                featureAssignments.get(id).delete(currentHole);
+                if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
+                renderFeatureList(allFeatures);
+                refreshUndoButton();
+                refreshFeatureStyles();
+              }
             }
           });
         }
       }).addTo(map);
 
-      featureAssignments.forEach((holes, id) => {
-        if (layers[id]) {
-          map.removeLayer(layers[id]);
-        }
-      });
+      refreshFeatureStyles();
       allFeatures = data.features;
       renderFeatureList(allFeatures);
     });
@@ -790,16 +794,16 @@
             _ensureSet(id).delete(currentHole);
             undoStack.push({type: 'unassign', id: id, hole: currentHole});
             if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
-            if (layers[id]) map.addLayer(layers[id]);
             renderFeatureList(allFeatures);
             refreshUndoButton();
+            refreshFeatureStyles();
           } else {
             if (currentHole >= 1 && currentHole <= 18) {
               undoStack.push({type: 'assign', id: id, hole: currentHole});
               _ensureSet(id).add(currentHole);
-              if (layers[id]) map.removeLayer(layers[id]);
               renderFeatureList(allFeatures);
               refreshUndoButton();
+              refreshFeatureStyles();
             }
             if (layers[id]) {
               map.setView(layers[id].getBounds ? layers[id].getBounds().getCenter() : layers[id].getLatLng(), 18);
