@@ -520,3 +520,26 @@ Resolved the remaining elevation shading rotation misalignment (Fix 2, Part B):
 - `docs/HANDOFF.md` — updated next actions
 
 **Next**: Manual tagger testing, run real PDF generation, cleanup git history (squash f1cf2b5..0898a88)
+
+## 2026-05-28 22:00 UTC
+
+**What was done**:
+- Redesigned tagger assignment UX: many-to-many assignments (Map-of-Sets), Add/Remove toggle modes, always-visible map with red borders for current hole, feature list filtered to active hole
+- Added Submit→Review→Confirm save flow: blue review overlay, green-completeness warning per hole, "Save Anyway" escape hatch
+- Added Ctrl-drag multi-select: Turf.js polygon intersection, compound undo per drag
+- Rewired map rendering: never hide assigned features, style-based indication instead of `map.removeLayer`
+- Fixed: split tool resetting assignments (missing hide-assigned in `refreshFeatures`), layers `ReferenceError`, `.hidden` CSS specificity vs `#review-actions` ID selector, split drag handler position capture, Save Anyway confirmation loop
+- Removed type filter checkboxes (obsolete with always-visible model)
+- Released v1.4.0: tagged, PR merged to main, dev synced
+
+**Files touched**:
+- `tagger/static/index.html` — complete UX redesign (~300 lines changed): Add/Remove toggles, mode-based click handlers, `refreshFeatureStyles`, Submit/Review/Confirm, ctrl-drag multi-select, hole completeness check, Turf.js integration
+- `tagger/server.py` — removed `__tee_holes` tracking (reverted)
+- `plugin.py` — version bump 1.3.0 → 1.4.0
+- `docs/superpowers/specs/2026-05-28-tagger-assignment-ux-redesign.md` — design spec
+- `docs/superpowers/specs/2026-05-28-shift-drag-multiselect.md` — multi-select spec
+- `docs/superpowers/plans/2026-05-28-tagger-assignment-ux-redesign.md` — implementation plan
+- `docs/superpowers/plans/2026-05-28-shift-drag-multiselect.md` — implementation plan
+- `docs/HANDOFF.md` — updated
+
+**Next**: Manual end-to-end test, run real PDF generation, performance test ctrl-drag with 200+ features

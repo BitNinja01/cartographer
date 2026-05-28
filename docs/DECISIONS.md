@@ -244,3 +244,19 @@ Feature geometry entries changed from bare `[[[lat,lon]]]` lists to `{"id": "way
 The undo button reverses the last action of any type — feature assignment, unassignment, or split-line creation. Actions are pushed onto a stack and popped in reverse order. The button is always visible but disabled when the stack is empty.
 
 **Why**: Users frequently make mistakes when tagging (wrong hole, accidentally split a feature). A stack-based undo is familiar, predictable, and handles all action types uniformly. No limit means the user can unwind any sequence of mistakes from a tagging session.
+
+---
+
+## 2026-05-28 — Style-based feature visibility replaces hide-on-assign
+
+Assigned features are never removed from the Leaflet map. Instead, `refreshFeatureStyles()` iterates the `layers` dict and sets styles: red border (`color: var(--danger)`, weight 3) for features assigned to the current hole, default type color (weight 2) otherwise. No `map.removeLayer()` calls for assignment state.
+
+**Why**: The old hide-on-assign model made it impossible to see what had been covered across the course. Users would accidentally unassign features because assigned ones were invisible. Style-based indication lets the user see everything at once while clearly distinguishing current-hole assignments. Switching holes updates all styles via a single `refreshFeatureStyles()` call — no layer rebuild needed.
+
+---
+
+## 2026-05-28 — Many-to-many assignments via Map-of-Sets
+
+`featureAssignments` changed from `{osm_id: hole_number}` to `Map<osm_id, Set<hole_numbers>>`. Features can belong to multiple holes simultaneously. The save handler iterates the Set and distributes the feature into each hole's geometry bucket.
+
+**Why**: Real courses share features between holes (a bunker between fairways, a green complex serving two holes). The old one-to-one model forced either arbitrary single-ownership or course-wide auto-distribution. Many-to-many lets the user decide which holes a feature belongs to, and the map shows red borders for ALL features assigned to the current hole — regardless of other affiliations.

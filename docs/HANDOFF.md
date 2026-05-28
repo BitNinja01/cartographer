@@ -1,18 +1,16 @@
 # Handoff
 
-**Last updated**: 2026-05-26 20:15 UTC
+**Last updated**: 2026-05-28 22:00 UTC
 
 ## Current state
 
-Multi-hole feature support implemented on `dev` branch with universal undo stack. Users can draw split lines across shared greens/fairways in the tagger to divide them between holes, and undo any action (splits, assignments, unassignments) via a LIFO stack. Split sub-features get synthetic IDs (`way/123__0`/`__1`) and slot into the existing one-to-one assignment flow. Zero changes to `geometry.py`, `renderer.py`, `pdf.py`, or `layout.py`. 174 tests pass.
-
-`courses_geo.json` format changed: feature rings now stored as `{"id": "...", "rings": [[...]]}` (backward-compatible — old format loads correctly). New `"splits"` key persists split lines.
+Tagger UX completely redesigned: many-to-many assignments with Add/Remove toggles, always-visible map features with red borders, Submit→Review→Confirm save flow with green-completeness warnings, ctrl-drag multi-select with Turf.js polygon intersection. v1.4.0 released and merged to main. dev is synced.
 
 ## Next actions
 
-1. **Manual tagger testing** — tag a course with shared features, split a feature, test undo stack, save, reload, verify assignments persist
-2. **Run real PDF generation** — test with DEM data to verify arrow quality, density, and direction
-3. **Clean up git history** — squash the 4 broken undo commits (f1cf2b5..0898a88) before pushing/PR
+1. **Manual end-to-end test** — launch the tagger with Salish Cliffs, assign greens/features to all 18 holes, verify Submit→Review→Confirm flow, test ctrl-drag, test undo, save and verify courses_geo.json
+2. **Run real PDF generation** — test the yardage book output with a fully tagged course to verify all hole diagrams render correctly
+3. **Performance test** — test ctrl-drag with Turf.js on courses with 200+ features to ensure no lag
 
 ## Blockers
 
