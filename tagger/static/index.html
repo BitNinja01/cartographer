@@ -453,6 +453,7 @@
   let allFeatures = [];
   let splitModeActive = false;
   let reviewMode = false;
+  let confirmedSaveAnyway = false;
   let assignmentMode = 'add'; // 'add' | 'remove'
   const layers = {};
   const undoStack = [];
@@ -575,6 +576,7 @@
 
   function enterReview() {
     reviewMode = true;
+    confirmedSaveAnyway = false;
     document.getElementById('btn-submit').classList.add('hidden');
     document.getElementById('review-actions').classList.remove('hidden');
     document.getElementById('btn-split-mode').classList.add('review-mode-dimmed');
@@ -612,6 +614,7 @@
 
   function exitReview() {
     reviewMode = false;
+    confirmedSaveAnyway = false;
     document.getElementById('btn-submit').classList.remove('hidden');
     document.getElementById('review-actions').classList.add('hidden');
     document.getElementById('btn-split-mode').classList.remove('review-mode-dimmed');
@@ -996,8 +999,9 @@
 
 
   document.getElementById('btn-confirm').onclick = () => {
-    const incomplete = [];
-    for (let h = 1; h <= 18; h++) {
+    if (!confirmedSaveAnyway) {
+      const incomplete = [];
+      for (let h = 1; h <= 18; h++) {
       const has = {green: false, tee: false};
       featureAssignments.forEach((holes, id) => {
         if (!holes.has(h)) return;
@@ -1022,7 +1026,9 @@
       if (strong) strong.style.color = 'oklch(64% 0.20 25)';
       document.getElementById('btn-confirm').textContent = 'Save Anyway';
       document.getElementById('btn-confirm').style.background = 'oklch(64% 0.20 25)';
+      confirmedSaveAnyway = true;
       return;
+    }
     }
     const holes = {};
     for (let h = 1; h <= 18; h++) {
