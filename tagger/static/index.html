@@ -458,6 +458,10 @@
   const splitMarkers = [];
   const splitLineLayers = [];
 
+  let shiftDragActive = false;
+  let shiftDragStart = null;
+  let shiftDragRect = null;
+
   document.getElementById('btn-add-mode').onclick = () => {
     assignmentMode = 'add';
     document.getElementById('btn-add-mode').classList.add('active');
@@ -722,6 +726,82 @@
       addSplitLine(splitMarkers[0].getLatLng(), splitMarkers[1].getLatLng());
     }
   });
+
+  map.on('mousedown', e => {
+    if (!e.originalEvent.shiftKey) return;
+    if (splitModeActive || reviewMode) return;
+    L.DomEvent.stopPropagation(e);
+    L.DomEvent.preventDefault(e);
+    shiftDragActive = true;
+    shiftDragStart = e.latlng;
+    if (shiftDragRect) { map.removeLayer(shiftDragRect); }
+    shiftDragRect = L.rectangle([e.latlng, e.latlng], {
+      color: 'oklch(48% 0.16 240)',
+      weight: 2,
+      dashArray: '6 3',
+      fillColor: 'oklch(48% 0.16 240)',
+      fillOpacity: 0.1,
+      interactive: false,
+    }).addTo(map);
+  });
+
+  map.on('mousemove', e => {
+    if (!shiftDragActive) return;
+    if (!e.originalEvent.shiftKey) {
+      cancelShiftDrag();
+      return;
+    }
+    if (shiftDragRect && shiftDragStart) {
+      shiftDragRect.setBounds(L.latLngBounds(shiftDragStart, e.latlng));
+    }
+  });
+
+  map.on('mouseup', e => {
+    if (!shiftDragActive) return;
+    shiftDragActive = false;
+    if (!shiftDragRect || !shiftDragStart) return;
+
+    const dragBounds = L.latLngBounds(shiftDragStart, e.latlng);
+    const affected = [];
+
+    Object.entries(layers).forEach(([id, layer]) => {
+      if (!layer.feature) return;
+      const ftype = layer.feature.properties.type;
+      if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;
+      const featureBounds = layer.getBounds ? layer.getBounds() : layer.getLatLng();
+      if (!featureBounds) return;
+      if (dragBounds.intersects(featureBounds)) {
+        affected.push({id, layer});
+      }
+    });
+
+    affected.forEach(({id}) => {
+      if (assignmentMode === 'add') {
+        if (featureAssignments.get(id)?.has(currentHole)) return;
+        undoStack.push({type: 'assign', id, hole: currentHole});
+        _ensureSet(id).add(currentHole);
+      } else {
+        if (!featureAssignments.has(id) || !featureAssignments.get(id).has(currentHole)) return;
+        undoStack.push({type: 'unassign', id, hole: currentHole});
+        featureAssignments.get(id).delete(currentHole);
+        if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
+      }
+    });
+
+    cancelShiftDrag();
+    renderFeatureList(allFeatures);
+    refreshUndoButton();
+    refreshFeatureStyles();
+  });
+
+  function cancelShiftDrag() {
+    shiftDragActive = false;
+    shiftDragStart = null;
+    if (shiftDragRect) {
+      map.removeLayer(shiftDragRect);
+      shiftDragRect = null;
+    }
+  }
 
   document.getElementById('btn-undo').onclick = () => {
     if (undoStack.length === 0) return;
