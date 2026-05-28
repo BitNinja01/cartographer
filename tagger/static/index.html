@@ -195,28 +195,6 @@
       border-color: var(--muted);
     }
 
-    .feature-item.assigned {
-      opacity: 0.7;
-      background: oklch(18% 0.06 145);
-      border-color: oklch(32% 0.10 145);
-    }
-
-    .feature-item.assigned:hover {
-      opacity: 0.85;
-      border-color: var(--accent);
-    }
-
-    .feature-item.course-wide {
-      opacity: 0.6;
-      cursor: default;
-      border-style: dashed;
-    }
-
-    .feature-item.course-wide:hover {
-      background: var(--surface-elevated);
-      border-color: transparent;
-    }
-
     .hole-badge {
       display: inline-block;
       padding: 3px 9px;
@@ -392,7 +370,7 @@
     <button id="btn-remove-mode" class="toggle-btn">- Remove</button>
   </div>
 
-  <div class="section-label">Features</div>
+  <div class="section-label">Assigned to this hole</div>
   <div id="feature-list"></div>
 
   <div id="controls">
@@ -767,12 +745,13 @@
     features.forEach(f => {
       const id = f.properties.osm_id;
       const type = f.properties.type;
-      const holes = featureAssignments.get(id);
-      const div = document.createElement('div');
       const isCourseWide = (type === 'water' || type === 'waterway' || type === 'path');
       if (isCourseWide) return;
+      const isAssigned = featureAssignments.has(id) && featureAssignments.get(id).has(currentHole);
+      if (!isAssigned) return;
 
-      div.className = 'feature-item' + ((holes && holes.size > 0) ? ' assigned' : '');
+      const div = document.createElement('div');
+      div.className = 'feature-item';
 
       let label = type;
       if (f.properties.split_group) {
@@ -782,34 +761,21 @@
         }
       }
 
-      const holeBadge = (holes && holes.size > 0)
-        ? `<span class="hole-badge">H${[...holes].sort((a,b)=>a-b).join(',H')}</span>`
-        : '';
-
       div.innerHTML = `
-        ${holeBadge}
         <span class="type-badge type-${type}">${label}</span>
         <span class="feature-meta">#${id}</span>
       `;
 
       div.onclick = () => {
-          if (assignmentMode === 'add') {
-            if (featureAssignments.get(id)?.has(currentHole)) return;
-            undoStack.push({type: 'assign', id: id, hole: currentHole});
-            _ensureSet(id).add(currentHole);
-          } else {
-            if (!featureAssignments.has(id) || !featureAssignments.get(id).has(currentHole)) return;
-            undoStack.push({type: 'unassign', id: id, hole: currentHole});
-            featureAssignments.get(id).delete(currentHole);
-            if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
-          }
-          renderFeatureList(allFeatures);
-          refreshUndoButton();
-          refreshFeatureStyles();
-          if (layers[id]) {
-            map.setView(layers[id].getBounds ? layers[id].getBounds().getCenter() : layers[id].getLatLng(), 18);
-          }
-        };
+        if (assignmentMode === 'add') return;
+        if (!featureAssignments.has(id) || !featureAssignments.get(id).has(currentHole)) return;
+        undoStack.push({type: 'unassign', id: id, hole: currentHole});
+        featureAssignments.get(id).delete(currentHole);
+        if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
+        renderFeatureList(allFeatures);
+        refreshUndoButton();
+        refreshFeatureStyles();
+      };
       list.appendChild(div);
     });
   }
