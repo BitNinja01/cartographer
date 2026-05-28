@@ -638,13 +638,15 @@
           }
         });
     } else if (action.type === 'assign') {
-      _ensureSet(action.id).delete(action.hole);
-      if (featureAssignments.get(action.id).size === 0) featureAssignments.delete(action.id);
+      const hole = action.hole || currentHole;
+      featureAssignments.get(action.id)?.delete(hole);
+      if (featureAssignments.get(action.id)?.size === 0) featureAssignments.delete(action.id);
       renderFeatureList(allFeatures);
       refreshUndoButton();
       refreshFeatureStyles();
     } else if (action.type === 'unassign') {
-      _ensureSet(action.id).add(action.hole);
+      const hole = action.hole || currentHole;
+      _ensureSet(action.id).add(hole);
       renderFeatureList(allFeatures);
       refreshUndoButton();
       refreshFeatureStyles();
