@@ -150,53 +150,6 @@
 
     .invalid { color: var(--muted) !important; }
 
-    #type-filters {
-      padding: 12px 20px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    #type-filters input[type=checkbox] {
-      display: none;
-    }
-
-    #type-filters label {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      cursor: pointer;
-      padding: 8px 12px;
-      border-radius: 6px;
-      transition: all 0.15s;
-      font-family: var(--font-mono);
-      background: var(--surface-elevated);
-      border: 1px solid var(--border);
-      opacity: 0.4;
-    }
-
-    #type-filters label:hover {
-      opacity: 0.7;
-      border-color: var(--muted);
-    }
-
-    #type-filters input[type=checkbox]:checked + label,
-    #type-filters label:has(input:checked) {
-      opacity: 1;
-      background: var(--accent);
-      color: var(--bg);
-      border-color: var(--accent);
-    }
-
-    #type-filters input[type=checkbox]:checked + label:hover,
-    #type-filters label:has(input:checked):hover {
-      opacity: 1;
-      background: var(--accent-hover);
-      border-color: var(--accent-hover);
-    }
-
     .type-badge {
       display: inline-block;
       padding: 2px 8px;
@@ -397,25 +350,7 @@
     </div>
   </div>
 
-  <div class="section-label">Filter by type</div>
-  <div id="type-filters">
-    <label>
-      <input type="checkbox" checked onchange="toggleFilter('fairway', this.checked)">
-      fairway
-    </label>
-    <label>
-      <input type="checkbox" checked onchange="toggleFilter('green', this.checked)">
-      green
-    </label>
-    <label>
-      <input type="checkbox" checked onchange="toggleFilter('bunker', this.checked)">
-      bunker
-    </label>
-    <label>
-      <input type="checkbox" checked onchange="toggleFilter('tee', this.checked)">
-      tee
-    </label>
-  </div>
+
 
   <div class="section-label">Features</div>
   <div id="feature-list"></div>
@@ -449,27 +384,11 @@
     return featureAssignments.get(id);
   }
 
-  const activeFilters = new Set(['fairway','green','bunker','water','waterway','path','tee']);
   let allFeatures = [];
   let splitModeActive = false;
   const undoStack = [];
   const splitMarkers = [];
   const splitLineLayers = [];
-
-  function toggleFilter(type, visible) {
-    visible ? activeFilters.add(type) : activeFilters.delete(type);
-    Object.entries(layers).forEach(([id, layer]) => {
-      if (layer.feature && layer.feature.properties.type === type) {
-        const isAssigned = featureAssignments.has(id) && featureAssignments.get(id).size > 0;
-        if (visible && !isAssigned) {
-          map.addLayer(layer);
-        } else {
-          map.removeLayer(layer);
-        }
-      }
-    });
-    renderFeatureList(allFeatures);
-  }
 
   let currentHole = 1;
 
@@ -620,11 +539,7 @@
           }
         });
 
-        Object.entries(layers).forEach(([id, layer]) => {
-          if (layer.feature && !activeFilters.has(layer.feature.properties.type)) {
-            map.removeLayer(layer);
-          }
-        });
+
       });
   }
 
@@ -792,7 +707,6 @@
     features.forEach(f => {
       const id = f.properties.osm_id;
       const type = f.properties.type;
-      if (!activeFilters.has(type)) return;
       const holes = featureAssignments.get(id);
       const div = document.createElement('div');
       const isCourseWide = (type === 'water' || type === 'waterway' || type === 'path');
