@@ -455,6 +455,7 @@
   let splitModeActive = false;
   let reviewMode = false;
   let assignmentMode = 'add'; // 'add' | 'remove'
+  const layers = {};
   const undoStack = [];
   const splitMarkers = [];
   const splitLineLayers = [];
@@ -764,8 +765,6 @@
       renderFeatureList(allFeatures);
       refreshFeatureStyles();
     });
-
-  const layers = {};
 
   fetch('/api/features')
     .then(r => r.json())
