@@ -332,6 +332,43 @@
       opacity: 0.3;
       cursor: default;
     }
+
+    #assignment-toggles {
+      padding: 12px 20px 8px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .toggle-btn {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--surface-elevated);
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+
+    .toggle-btn:hover {
+      border-color: var(--muted);
+      color: var(--fg);
+    }
+
+    .toggle-btn.active {
+      background: var(--accent);
+      color: var(--bg);
+      border-color: var(--accent);
+    }
+
+    #btn-remove-mode.active {
+      background: var(--danger);
+      color: white;
+      border-color: var(--danger);
+    }
   </style>
 </head>
 <body>
@@ -350,7 +387,10 @@
     </div>
   </div>
 
-
+  <div id="assignment-toggles">
+    <button id="btn-add-mode" class="toggle-btn active">+ Add</button>
+    <button id="btn-remove-mode" class="toggle-btn">- Remove</button>
+  </div>
 
   <div class="section-label">Features</div>
   <div id="feature-list"></div>
@@ -386,9 +426,22 @@
 
   let allFeatures = [];
   let splitModeActive = false;
+  let assignmentMode = 'add'; // 'add' | 'remove'
   const undoStack = [];
   const splitMarkers = [];
   const splitLineLayers = [];
+
+  document.getElementById('btn-add-mode').onclick = () => {
+    assignmentMode = 'add';
+    document.getElementById('btn-add-mode').classList.add('active');
+    document.getElementById('btn-remove-mode').classList.remove('active');
+  };
+
+  document.getElementById('btn-remove-mode').onclick = () => {
+    assignmentMode = 'remove';
+    document.getElementById('btn-remove-mode').classList.add('active');
+    document.getElementById('btn-add-mode').classList.remove('active');
+  };
 
   let currentHole = 1;
 
