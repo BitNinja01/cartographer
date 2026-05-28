@@ -6,6 +6,7 @@
   <title>Cartographer — Course Tagger</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
   <style>
     @font-face {
       font-family: 'JetBrains Mono';
@@ -765,13 +766,19 @@
     const dragBounds = L.latLngBounds(shiftDragStart, e.latlng);
     const affected = [];
 
+    const sw = dragBounds.getSouthWest();
+    const ne = dragBounds.getNorthEast();
+    const dragPolygon = turf.polygon([[
+      [sw.lng, sw.lat], [ne.lng, sw.lat],
+      [ne.lng, ne.lat], [sw.lng, ne.lat],
+      [sw.lng, sw.lat],
+    ]]);
+
     Object.entries(layers).forEach(([id, layer]) => {
       if (!layer.feature) return;
       const ftype = layer.feature.properties.type;
       if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;
-      const featureBounds = layer.getBounds ? layer.getBounds() : layer.getLatLng();
-      if (!featureBounds) return;
-      if (dragBounds.intersects(featureBounds)) {
+      if (turf.booleanIntersects(layer.feature, dragPolygon)) {
         affected.push({id, layer});
       }
     });
