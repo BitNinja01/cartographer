@@ -565,6 +565,7 @@
               if (splitModeActive) return;
               if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;
               if (assignmentMode === 'add') {
+                if (featureAssignments.get(id)?.has(currentHole)) return;
                 undoStack.push({type: 'assign', id: id, hole: currentHole});
                 _ensureSet(id).add(currentHole);
                 renderFeatureList(allFeatures);
@@ -682,6 +683,7 @@
         }
       });
       renderFeatureList(allFeatures);
+      refreshFeatureStyles();
     });
 
   const layers = {};
@@ -734,6 +736,7 @@
             const ftype = feature.properties.type;
             if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;
             if (assignmentMode === 'add') {
+              if (featureAssignments.get(id)?.has(currentHole)) return;
               undoStack.push({type: 'assign', id: id, hole: currentHole});
               _ensureSet(id).add(currentHole);
               renderFeatureList(allFeatures);
@@ -790,24 +793,21 @@
       `;
 
       div.onclick = () => {
-          if (holes && holes.has(currentHole)) {
-            _ensureSet(id).delete(currentHole);
-            undoStack.push({type: 'unassign', id: id, hole: currentHole});
-            if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
-            renderFeatureList(allFeatures);
-            refreshUndoButton();
-            refreshFeatureStyles();
+          if (assignmentMode === 'add') {
+            if (featureAssignments.get(id)?.has(currentHole)) return;
+            undoStack.push({type: 'assign', id: id, hole: currentHole});
+            _ensureSet(id).add(currentHole);
           } else {
-            if (currentHole >= 1 && currentHole <= 18) {
-              undoStack.push({type: 'assign', id: id, hole: currentHole});
-              _ensureSet(id).add(currentHole);
-              renderFeatureList(allFeatures);
-              refreshUndoButton();
-              refreshFeatureStyles();
-            }
-            if (layers[id]) {
-              map.setView(layers[id].getBounds ? layers[id].getBounds().getCenter() : layers[id].getLatLng(), 18);
-            }
+            if (!featureAssignments.has(id) || !featureAssignments.get(id).has(currentHole)) return;
+            undoStack.push({type: 'unassign', id: id, hole: currentHole});
+            featureAssignments.get(id).delete(currentHole);
+            if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
+          }
+          renderFeatureList(allFeatures);
+          refreshUndoButton();
+          refreshFeatureStyles();
+          if (layers[id]) {
+            map.setView(layers[id].getBounds ? layers[id].getBounds().getCenter() : layers[id].getLatLng(), 18);
           }
         };
       list.appendChild(div);
