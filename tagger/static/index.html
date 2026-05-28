@@ -195,30 +195,6 @@
       border-color: var(--muted);
     }
 
-    .hole-badge {
-      display: inline-block;
-      padding: 3px 9px;
-      background: var(--accent);
-      color: var(--bg);
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 700;
-      font-family: var(--font-mono);
-    }
-
-    .course-wide-badge {
-      display: inline-block;
-      padding: 3px 9px;
-      background: oklch(54% 0.12 240);
-      color: white;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 600;
-      font-family: var(--font-mono);
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-
     .feature-meta {
       color: var(--muted);
       font-size: 12px;
@@ -729,14 +705,10 @@
 
     marker.on('dragend', () => {
       if (splitMarkers.length === 2) {
+        const p1 = splitMarkers[0].getLatLng();
+        const p2 = splitMarkers[1].getLatLng();
         clearSplitMarkers();
-        const p1 = splitMarkers[0];
-        const p2 = splitMarkers[1];
-        splitMarkers[0] = p1;
-        splitMarkers[1] = p2;
-        if (p1 && p2) {
-          addSplitLine(p1.getLatLng(), p2.getLatLng());
-        }
+        addSplitLine(p1, p2);
       }
     });
 
