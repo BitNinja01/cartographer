@@ -455,6 +455,7 @@
   let reviewMode = false;
   let confirmedSaveAnyway = false;
   let assignmentMode = 'add'; // 'add' | 'remove'
+  let savedTeeHoles = new Set();
   const layers = {};
   const undoStack = [];
   const splitMarkers = [];
@@ -587,7 +588,7 @@
 
     const incomplete = [];
     for (let h = 1; h <= 18; h++) {
-      const has = {green: false, tee: false};
+      const has = {green: false, tee: savedTeeHoles.has(h)};
       featureAssignments.forEach((holes, id) => {
         if (!holes.has(h)) return;
         const f = allFeatures.find(f => f.properties.osm_id === id);
@@ -901,6 +902,9 @@
   fetch('/api/assignments')
     .then(r => r.json())
     .then(assignments => {
+      if (Array.isArray(assignments.__tee_holes)) {
+        savedTeeHoles = new Set(assignments.__tee_holes);
+      }
       Object.entries(assignments).forEach(([id, hole]) => {
         if (typeof hole === 'number') {
           _ensureSet(id).add(hole);
