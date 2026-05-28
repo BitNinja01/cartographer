@@ -567,12 +567,12 @@
         splitLineLayers.push(line);
 
         // Clear assignments for affected (now-split) features
-        (data.affected || []).forEach(orig_id => {
-          const toDelete = [];
-          featureAssignments.forEach((val, k) => {
-            if (k.startsWith(orig_id)) toDelete.push(k);
+        (data.affected || []).forEach(affectedId => {
+          featureAssignments.forEach((holes, key) => {
+            if (key.startsWith(affectedId)) {
+              featureAssignments.delete(key);
+            }
           });
-          toDelete.forEach(k => featureAssignments.delete(k));
         });
         refreshFeatures();
       }
@@ -710,6 +710,7 @@
   }
 
   map.on('click', e => {
+    if (reviewMode) return;
     if (!splitModeActive) return;
 
     if (splitMarkers.length >= 2) {
