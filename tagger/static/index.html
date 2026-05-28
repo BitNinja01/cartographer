@@ -440,7 +440,15 @@
 
   const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
 
-  let featureAssignments = {};
+  let featureAssignments = new Map();
+
+  function _ensureSet(id) {
+    if (!featureAssignments.has(id)) {
+      featureAssignments.set(id, new Set());
+    }
+    return featureAssignments.get(id);
+  }
+
   const activeFilters = new Set(['fairway','green','bunker','water','waterway','path','tee']);
   let allFeatures = [];
   let splitModeActive = false;
@@ -452,7 +460,7 @@
     visible ? activeFilters.add(type) : activeFilters.delete(type);
     Object.entries(layers).forEach(([id, layer]) => {
       if (layer.feature && layer.feature.properties.type === type) {
-        const isAssigned = !!featureAssignments[id];
+        const isAssigned = featureAssignments.has(id) && featureAssignments.get(id).size > 0;
         if (visible && !isAssigned) {
           map.addLayer(layer);
         } else {
@@ -526,9 +534,11 @@
 
         // Clear assignments for affected (now-split) features
         (data.affected || []).forEach(orig_id => {
-          Object.keys(featureAssignments).forEach(k => {
-            if (k.startsWith(orig_id)) delete featureAssignments[k];
+          const toDelete = [];
+          featureAssignments.forEach((val, k) => {
+            if (k.startsWith(orig_id)) toDelete.push(k);
           });
+          toDelete.forEach(k => featureAssignments.delete(k));
         });
         refreshFeatures();
       }
@@ -568,17 +578,18 @@
             layer.on('click', e => {
               if (splitModeActive) return;
               if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;
-              if (featureAssignments[id]) {
-                undoStack.push({type: 'unassign', id: id, hole: featureAssignments[id]});
-                delete featureAssignments[id];
+              if (featureAssignments.has(id) && featureAssignments.get(id).has(currentHole)) {
+                _ensureSet(id).delete(currentHole);
+                undoStack.push({type: 'unassign', id: id, hole: currentHole});
+                if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
                 map.addLayer(layer);
                 renderFeatureList(allFeatures);
                 refreshUndoButton();
                 return;
               }
               if (currentHole >= 1 && currentHole <= 18) {
-                undoStack.push({type: 'assign', id: id});
-                featureAssignments[id] = currentHole;
+                undoStack.push({type: 'assign', id: id, hole: currentHole});
+                _ensureSet(id).add(currentHole);
                 map.removeLayer(layer);
                 renderFeatureList(allFeatures);
                 refreshUndoButton();
@@ -602,6 +613,18 @@
               splitLineLayers.push(line);
             });
           });
+
+        featureAssignments.forEach((holes, id) => {
+          if (layers[id]) {
+            map.removeLayer(layers[id]);
+          }
+        });
+
+        Object.entries(layers).forEach(([id, layer]) => {
+          if (layer.feature && !activeFilters.has(layer.feature.properties.type)) {
+            map.removeLayer(layer);
+          }
+        });
       });
   }
 
@@ -660,12 +683,13 @@
           }
         });
     } else if (action.type === 'assign') {
-      delete featureAssignments[action.id];
+      _ensureSet(action.id).delete(action.hole);
+      if (featureAssignments.get(action.id).size === 0) featureAssignments.delete(action.id);
       if (layers[action.id]) map.addLayer(layers[action.id]);
       renderFeatureList(allFeatures);
       refreshUndoButton();
     } else if (action.type === 'unassign') {
-      featureAssignments[action.id] = action.hole;
+      _ensureSet(action.id).add(action.hole);
       if (layers[action.id]) map.removeLayer(layers[action.id]);
       renderFeatureList(allFeatures);
       refreshUndoButton();
@@ -676,7 +700,11 @@
   fetch('/api/assignments')
     .then(r => r.json())
     .then(assignments => {
-      Object.assign(featureAssignments, assignments);
+      Object.entries(assignments).forEach(([id, hole]) => {
+        if (typeof hole === 'number') {
+          _ensureSet(id).add(hole);
+        }
+      });
       renderFeatureList(allFeatures);
     });
 
@@ -690,7 +718,7 @@
       (data.features || []).forEach(f => {
         const hole = f.properties.hole;
         if (hole && hole >= 1 && hole <= 18) {
-          featureAssignments[f.properties.osm_id] = hole;
+          _ensureSet(f.properties.osm_id).add(hole);
         }
       });
 
@@ -729,17 +757,18 @@
             const ftype = feature.properties.type;
             if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;  // course-wide, not per-hole
 
-            if (featureAssignments[id]) {
-              undoStack.push({type: 'unassign', id: id, hole: featureAssignments[id]});
-              delete featureAssignments[id];
+            if (featureAssignments.has(id) && featureAssignments.get(id).has(currentHole)) {
+              _ensureSet(id).delete(currentHole);
+              undoStack.push({type: 'unassign', id: id, hole: currentHole});
+              if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
               map.addLayer(layer);
               renderFeatureList(allFeatures);
               refreshUndoButton();
               return;
             }
             if (currentHole >= 1 && currentHole <= 18) {
-              undoStack.push({type: 'assign', id: id});
-              featureAssignments[id] = currentHole;
+              undoStack.push({type: 'assign', id: id, hole: currentHole});
+              _ensureSet(id).add(currentHole);
               map.removeLayer(layer);
               renderFeatureList(allFeatures);
               refreshUndoButton();
@@ -748,7 +777,7 @@
         }
       }).addTo(map);
 
-      Object.entries(featureAssignments).forEach(([id]) => {
+      featureAssignments.forEach((holes, id) => {
         if (layers[id]) {
           map.removeLayer(layers[id]);
         }
@@ -764,12 +793,12 @@
       const id = f.properties.osm_id;
       const type = f.properties.type;
       if (!activeFilters.has(type)) return;
-      const hole = featureAssignments[id];
+      const holes = featureAssignments.get(id);
       const div = document.createElement('div');
       const isCourseWide = (type === 'water' || type === 'waterway' || type === 'path');
       if (isCourseWide) return;
 
-      div.className = 'feature-item' + (hole ? ' assigned' : '');
+      div.className = 'feature-item' + ((holes && holes.size > 0) ? ' assigned' : '');
 
       let label = type;
       if (f.properties.split_group) {
@@ -779,7 +808,9 @@
         }
       }
 
-      const holeBadge = hole ? `<span class="hole-badge">H${hole}</span>` : '';
+      const holeBadge = (holes && holes.size > 0)
+        ? `<span class="hole-badge">H${[...holes].sort((a,b)=>a-b).join(',H')}</span>`
+        : '';
 
       div.innerHTML = `
         ${holeBadge}
@@ -788,16 +819,17 @@
       `;
 
       div.onclick = () => {
-          if (hole) {
-            undoStack.push({type: 'unassign', id: id, hole: hole});
-            delete featureAssignments[id];
+          if (holes && holes.size > 0) {
+            _ensureSet(id).delete(currentHole);
+            undoStack.push({type: 'unassign', id: id, hole: currentHole});
+            if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
             if (layers[id]) map.addLayer(layers[id]);
             renderFeatureList(allFeatures);
             refreshUndoButton();
           } else {
             if (currentHole >= 1 && currentHole <= 18) {
-              undoStack.push({type: 'assign', id: id});
-              featureAssignments[id] = currentHole;
+              undoStack.push({type: 'assign', id: id, hole: currentHole});
+              _ensureSet(id).add(currentHole);
               if (layers[id]) map.removeLayer(layers[id]);
               renderFeatureList(allFeatures);
               refreshUndoButton();
@@ -822,7 +854,7 @@
         const id = f.properties.osm_id;
         const geom = f.geometry;
         const type = f.properties.type;
-        const hole = featureAssignments[id];
+        const holesSet = featureAssignments.get(id);
 
         // Water and paths are course-wide -- auto-distribute to all 18 holes
         if (type === 'water' || type === 'waterway' || type === 'path') {
@@ -840,26 +872,28 @@
           return;
         }
 
-        if (!hole) return;
-        const hk = String(hole);
-        if (geom.type === 'Point') {
-          const teeColour = f.properties.tags?.colour || f.properties.tags?.color || 'white';
-          holes[hk].tee_boxes[teeColour] = [geom.coordinates[1], geom.coordinates[0]];
-        } else if (geom.type === 'Polygon') {
-          const ring = geom.coordinates[0].map(c => [c[1], c[0]]);
-          const item = {"id": id, "rings": ring};
-          if (type === 'fairway') holes[hk].fairway.push(item);
-          else if (type === 'green') holes[hk].green.push(item);
-          else if (type === 'bunker') holes[hk].bunkers.push(item);
-          else if (type === 'water') holes[hk].water.push(item);
-          else if (type === 'rough') holes[hk].rough_boundary.push(item);
-          else if (type === 'tee') holes[hk].rough_boundary.push(item);
-        } else if (geom.type === 'LineString') {
-          const line = geom.coordinates.map(c => [c[1], c[0]]);
-          const item = {"id": id, "rings": line};
-          if (type === 'path') holes[hk].paths.push(item);
-          else if (type === 'waterway') holes[hk].waterways.push(item);
-        }
+        if (!holesSet || holesSet.size === 0) return;
+        holesSet.forEach(hole => {
+          const hk = String(hole);
+          if (geom.type === 'Point') {
+            const teeColour = f.properties.tags?.colour || f.properties.tags?.color || 'white';
+            holes[hk].tee_boxes[teeColour] = [geom.coordinates[1], geom.coordinates[0]];
+          } else if (geom.type === 'Polygon') {
+            const ring = geom.coordinates[0].map(c => [c[1], c[0]]);
+            const item = {"id": id, "rings": ring};
+            if (type === 'fairway') holes[hk].fairway.push(item);
+            else if (type === 'green') holes[hk].green.push(item);
+            else if (type === 'bunker') holes[hk].bunkers.push(item);
+            else if (type === 'water') holes[hk].water.push(item);
+            else if (type === 'rough') holes[hk].rough_boundary.push(item);
+            else if (type === 'tee') holes[hk].rough_boundary.push(item);
+          } else if (geom.type === 'LineString') {
+            const line = geom.coordinates.map(c => [c[1], c[0]]);
+            const item = {"id": id, "rings": line};
+            if (type === 'path') holes[hk].paths.push(item);
+            else if (type === 'waterway') holes[hk].waterways.push(item);
+          }
+        });
       });
 
       fetch('/api/save', {
