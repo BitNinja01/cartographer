@@ -455,7 +455,6 @@
   let reviewMode = false;
   let confirmedSaveAnyway = false;
   let assignmentMode = 'add'; // 'add' | 'remove'
-  let savedTeeHoles = new Set();
   const layers = {};
   const undoStack = [];
   const splitMarkers = [];
@@ -588,18 +587,14 @@
 
     const incomplete = [];
     for (let h = 1; h <= 18; h++) {
-      const has = {green: false, tee: savedTeeHoles.has(h)};
+      let hasGreen = false;
       featureAssignments.forEach((holes, id) => {
         if (!holes.has(h)) return;
         const f = allFeatures.find(f => f.properties.osm_id === id);
         if (!f) return;
-        if (f.properties.type === 'green') has.green = true;
-        if (f.properties.type === 'tee' && f.geometry.type === 'Point') has.tee = true;
+        if (f.properties.type === 'green') hasGreen = true;
       });
-      const missing = [];
-      if (!has.green) missing.push('green');
-      if (!has.tee) missing.push('tee box');
-      if (missing.length) incomplete.push({hole: h, missing});
+      if (!hasGreen) incomplete.push({hole: h, missing: ['green']});
     }
 
     let info = document.getElementById('review-info');
@@ -612,7 +607,7 @@
     const confirmBtn = document.getElementById('btn-confirm');
 
     if (incomplete.length) {
-      const lines = incomplete.map(h => 'Hole ' + h.hole + ': missing ' + h.missing.join(', '));
+      const lines = incomplete.map(h => 'Hole ' + h.hole + ': missing green');
       info.innerHTML = '<strong>Incomplete holes</strong><br>' + lines.join('<br>');
       info.style.background = 'oklch(18% 0.06 25)';
       info.style.border = '1px solid oklch(64% 0.20 25)';
@@ -902,9 +897,6 @@
   fetch('/api/assignments')
     .then(r => r.json())
     .then(assignments => {
-      if (Array.isArray(assignments.__tee_holes)) {
-        savedTeeHoles = new Set(assignments.__tee_holes);
-      }
       Object.entries(assignments).forEach(([id, hole]) => {
         if (typeof hole === 'number') {
           _ensureSet(id).add(hole);

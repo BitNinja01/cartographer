@@ -139,13 +139,6 @@ def _derive_assignments(holes: dict, expanded_features: list[dict]) -> dict:
                         if fid in id_to_feature:
                             assignments[fid] = hole_num
 
-    # Tee boxes don't have feature IDs in saved format (stored as {colour: [lat,lon]}).
-    # Return a separate key so the client can check hole tee status independently.
-    tee_holes = [int(hk) for hk, hd in holes.items()
-                 if hk.isdigit() and hd.get("tee_boxes", {})]
-    if tee_holes:
-        assignments["__tee_holes"] = tee_holes
-
     return assignments
 
 
