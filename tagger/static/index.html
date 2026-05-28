@@ -591,6 +591,13 @@
       featureList.parentNode.insertBefore(info, featureList);
     }
     info.innerHTML = '<strong>Review mode</strong><br>All assigned features are highlighted on the map.';
+    info.style.background = 'oklch(18% 0.06 240)';
+    info.style.border = '1px solid oklch(48% 0.16 240)';
+    const strong = info.querySelector('strong');
+    if (strong) strong.style.color = 'oklch(48% 0.16 240)';
+    const confirmBtn = document.getElementById('btn-confirm');
+    confirmBtn.textContent = 'Confirm?';
+    confirmBtn.style.background = 'oklch(48% 0.16 240)';
     info.classList.remove('hidden');
 
     featureAssignments.forEach((holes, id) => {
@@ -989,6 +996,34 @@
 
 
   document.getElementById('btn-confirm').onclick = () => {
+    const incomplete = [];
+    for (let h = 1; h <= 18; h++) {
+      const has = {green: false, tee: false};
+      featureAssignments.forEach((holes, id) => {
+        if (!holes.has(h)) return;
+        const f = allFeatures.find(f => f.properties.osm_id === id);
+        if (!f) return;
+        if (f.properties.type === 'green') has.green = true;
+        if (f.properties.type === 'tee' && f.geometry.type === 'Point') has.tee = true;
+      });
+      const missing = [];
+      if (!has.green) missing.push('green');
+      if (!has.tee) missing.push('tee box');
+      if (missing.length) incomplete.push({hole: h, missing});
+    }
+
+    if (incomplete.length) {
+      const info = document.getElementById('review-info');
+      const lines = incomplete.map(h => 'Hole ' + h.hole + ': missing ' + h.missing.join(', '));
+      info.innerHTML = '<strong>Incomplete holes</strong><br>' + lines.join('<br>');
+      info.style.background = 'oklch(18% 0.06 25)';
+      info.style.border = '1px solid oklch(64% 0.20 25)';
+      const strong = info.querySelector('strong');
+      if (strong) strong.style.color = 'oklch(64% 0.20 25)';
+      document.getElementById('btn-confirm').textContent = 'Save Anyway';
+      document.getElementById('btn-confirm').style.background = 'oklch(64% 0.20 25)';
+      return;
+    }
     const holes = {};
     for (let h = 1; h <= 18; h++) {
       holes[String(h)] = {fairway:[], green:[], bunkers:[], tee_boxes:{}, water:[], waterways:[], paths:[], rough_boundary:[]};
