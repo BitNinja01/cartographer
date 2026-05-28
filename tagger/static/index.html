@@ -246,18 +246,6 @@
       letter-spacing: -0.01em;
     }
 
-    #btn-save {
-      background: var(--accent);
-      color: var(--bg);
-    }
-
-    #btn-save:hover {
-      background: var(--accent-hover);
-      transform: translateY(-1px);
-    }
-
-
-
     .hidden {
       display: none;
     }
@@ -309,6 +297,85 @@
     #btn-undo:disabled {
       opacity: 0.3;
       cursor: default;
+    }
+
+    #review-info {
+      padding: 12px 20px;
+      background: oklch(18% 0.06 240);
+      border: 1px solid oklch(48% 0.16 240);
+      border-radius: 6px;
+      margin: 0 20px 12px;
+      font-size: 12px;
+      color: oklch(94% 0.006 240);
+    }
+
+    #review-info strong {
+      color: oklch(48% 0.16 240);
+    }
+
+    .review-mode-dimmed {
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    #btn-submit {
+      background: var(--accent);
+      color: var(--bg);
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    #btn-submit:hover {
+      background: var(--accent-hover);
+    }
+
+    #review-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    #btn-back {
+      flex: 1;
+      padding: 12px;
+      background: var(--surface-elevated);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    #btn-back:hover {
+      background: var(--border);
+      color: var(--fg);
+    }
+
+    #btn-confirm {
+      flex: 1;
+      padding: 12px;
+      background: oklch(48% 0.16 240);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    #btn-confirm:hover {
+      background: oklch(52% 0.18 240);
     }
 
     #assignment-toggles {
@@ -376,7 +443,13 @@
   <div id="controls">
     <button id="btn-split-mode">Split Mode</button>
     <button id="btn-undo" disabled>Undo</button>
-    <button id="btn-save">Save &amp; Close</button>
+    <div id="submit-group">
+      <button id="btn-submit">Submit</button>
+      <div id="review-actions" class="hidden">
+        <button id="btn-back">Back</button>
+        <button id="btn-confirm">Confirm?</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -404,6 +477,7 @@
 
   let allFeatures = [];
   let splitModeActive = false;
+  let reviewMode = false;
   let assignmentMode = 'add'; // 'add' | 'remove'
   const undoStack = [];
   const splitMarkers = [];
@@ -468,6 +542,14 @@
     document.getElementById('btn-undo').disabled = undoStack.length === 0;
   }
 
+  document.getElementById('btn-submit').onclick = () => {
+    enterReview();
+  };
+
+  document.getElementById('btn-back').onclick = () => {
+    exitReview();
+  };
+
   function addSplitLine(p1, p2) {
     fetch('/api/splits', {
       method: 'POST',
@@ -509,6 +591,50 @@
         layer.setStyle({color: baseColor, weight: 2});
       }
     });
+  }
+
+  function enterReview() {
+    reviewMode = true;
+    document.getElementById('btn-submit').classList.add('hidden');
+    document.getElementById('review-actions').classList.remove('hidden');
+    document.getElementById('btn-split-mode').classList.add('review-mode-dimmed');
+    document.getElementById('btn-undo').classList.add('review-mode-dimmed');
+    document.getElementById('btn-add-mode').classList.add('review-mode-dimmed');
+    document.getElementById('btn-remove-mode').classList.add('review-mode-dimmed');
+    document.getElementById('hole-selector').classList.add('review-mode-dimmed');
+
+    let info = document.getElementById('review-info');
+    if (!info) {
+      info = document.createElement('div');
+      info.id = 'review-info';
+      const featureList = document.getElementById('feature-list');
+      featureList.parentNode.insertBefore(info, featureList);
+    }
+    info.innerHTML = '<strong>Review mode</strong><br>All assigned features are highlighted on the map.';
+    info.classList.remove('hidden');
+
+    featureAssignments.forEach((holes, id) => {
+      const layer = layers[id];
+      if (!layer || holes.size === 0) return;
+      const ftype = layer.feature ? layer.feature.properties.type : null;
+      const isCourseWide = ftype === 'water' || ftype === 'waterway' || ftype === 'path';
+      if (isCourseWide) return;
+      layer.setStyle({color: 'oklch(48% 0.16 240)', weight: 3});
+    });
+  }
+
+  function exitReview() {
+    reviewMode = false;
+    document.getElementById('btn-submit').classList.remove('hidden');
+    document.getElementById('review-actions').classList.add('hidden');
+    document.getElementById('btn-split-mode').classList.remove('review-mode-dimmed');
+    document.getElementById('btn-undo').classList.remove('review-mode-dimmed');
+    document.getElementById('btn-add-mode').classList.remove('review-mode-dimmed');
+    document.getElementById('btn-remove-mode').classList.remove('review-mode-dimmed');
+    document.getElementById('hole-selector').classList.remove('review-mode-dimmed');
+    const info = document.getElementById('review-info');
+    if (info) info.classList.add('hidden');
+    refreshFeatureStyles();
   }
 
   function refreshFeatures() {
@@ -783,7 +909,7 @@
   }
 
 
-  document.getElementById('btn-save').onclick = () => {
+  document.getElementById('btn-confirm').onclick = () => {
     const holes = {};
     for (let h = 1; h <= 18; h++) {
       holes[String(h)] = {fairway:[], green:[], bunkers:[], tee_boxes:{}, water:[], waterways:[], paths:[], rough_boundary:[]};
