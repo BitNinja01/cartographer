@@ -6,6 +6,7 @@
   <title>Cartographer — Course Tagger</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
   <style>
     @font-face {
       font-family: 'JetBrains Mono';
@@ -150,53 +151,6 @@
 
     .invalid { color: var(--muted) !important; }
 
-    #type-filters {
-      padding: 12px 20px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    #type-filters input[type=checkbox] {
-      display: none;
-    }
-
-    #type-filters label {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      cursor: pointer;
-      padding: 8px 12px;
-      border-radius: 6px;
-      transition: all 0.15s;
-      font-family: var(--font-mono);
-      background: var(--surface-elevated);
-      border: 1px solid var(--border);
-      opacity: 0.4;
-    }
-
-    #type-filters label:hover {
-      opacity: 0.7;
-      border-color: var(--muted);
-    }
-
-    #type-filters input[type=checkbox]:checked + label,
-    #type-filters label:has(input:checked) {
-      opacity: 1;
-      background: var(--accent);
-      color: var(--bg);
-      border-color: var(--accent);
-    }
-
-    #type-filters input[type=checkbox]:checked + label:hover,
-    #type-filters label:has(input:checked):hover {
-      opacity: 1;
-      background: var(--accent-hover);
-      border-color: var(--accent-hover);
-    }
-
     .type-badge {
       display: inline-block;
       padding: 2px 8px;
@@ -242,52 +196,6 @@
       border-color: var(--muted);
     }
 
-    .feature-item.assigned {
-      opacity: 0.7;
-      background: oklch(18% 0.06 145);
-      border-color: oklch(32% 0.10 145);
-    }
-
-    .feature-item.assigned:hover {
-      opacity: 0.85;
-      border-color: var(--accent);
-    }
-
-    .feature-item.course-wide {
-      opacity: 0.6;
-      cursor: default;
-      border-style: dashed;
-    }
-
-    .feature-item.course-wide:hover {
-      background: var(--surface-elevated);
-      border-color: transparent;
-    }
-
-    .hole-badge {
-      display: inline-block;
-      padding: 3px 9px;
-      background: var(--accent);
-      color: var(--bg);
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 700;
-      font-family: var(--font-mono);
-    }
-
-    .course-wide-badge {
-      display: inline-block;
-      padding: 3px 9px;
-      background: oklch(54% 0.12 240);
-      color: white;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 600;
-      font-family: var(--font-mono);
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-
     .feature-meta {
       color: var(--muted);
       font-size: 12px;
@@ -315,20 +223,173 @@
       letter-spacing: -0.01em;
     }
 
-    #btn-save {
+    .hidden {
+      display: none !important;
+    }
+
+    #btn-split-mode {
+      background: var(--surface-elevated);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 14px;
+      transition: all 0.15s;
+    }
+
+    #btn-split-mode:hover {
+      background: var(--border);
+      color: var(--fg);
+    }
+
+    #btn-split-mode.active {
+      background: var(--danger);
+      color: white;
+      border-color: var(--danger);
+    }
+
+    .split-line {
+      stroke-dasharray: 8 4;
+    }
+
+    #btn-undo {
+      background: var(--surface-elevated);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 14px;
+      transition: all 0.15s;
+    }
+    #btn-undo:hover:not(:disabled) {
+      background: var(--border);
+      color: var(--fg);
+    }
+    #btn-undo:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+
+    #review-info {
+      padding: 12px 20px;
+      background: oklch(18% 0.06 240);
+      border: 1px solid oklch(48% 0.16 240);
+      border-radius: 6px;
+      margin: 0 20px 12px;
+      font-size: 12px;
+      color: oklch(94% 0.006 240);
+    }
+
+    #review-info strong {
+      color: oklch(48% 0.16 240);
+    }
+
+    .review-mode-dimmed {
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    #btn-submit {
       background: var(--accent);
       color: var(--bg);
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.15s;
     }
 
-    #btn-save:hover {
+    #btn-submit:hover {
       background: var(--accent-hover);
-      transform: translateY(-1px);
     }
 
+    #review-actions {
+      display: flex;
+      gap: 8px;
+    }
 
+    #btn-back {
+      flex: 1;
+      padding: 12px;
+      background: var(--surface-elevated);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
 
-    .hidden {
-      display: none;
+    #btn-back:hover {
+      background: var(--border);
+      color: var(--fg);
+    }
+
+    #btn-confirm {
+      flex: 1;
+      padding: 12px;
+      background: oklch(48% 0.16 240);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    #btn-confirm:hover {
+      background: oklch(52% 0.18 240);
+    }
+
+    #assignment-toggles {
+      padding: 12px 20px 8px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .toggle-btn {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--surface-elevated);
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+
+    .toggle-btn:hover {
+      border-color: var(--muted);
+      color: var(--fg);
+    }
+
+    .toggle-btn.active {
+      background: var(--accent);
+      color: var(--bg);
+      border-color: var(--accent);
+    }
+
+    #btn-remove-mode.active {
+      background: var(--danger);
+      color: white;
+      border-color: var(--danger);
     }
   </style>
 </head>
@@ -348,31 +409,22 @@
     </div>
   </div>
 
-  <div class="section-label">Filter by type</div>
-  <div id="type-filters">
-    <label>
-      <input type="checkbox" checked onchange="toggleFilter('fairway', this.checked)">
-      fairway
-    </label>
-    <label>
-      <input type="checkbox" checked onchange="toggleFilter('green', this.checked)">
-      green
-    </label>
-    <label>
-      <input type="checkbox" checked onchange="toggleFilter('bunker', this.checked)">
-      bunker
-    </label>
-    <label>
-      <input type="checkbox" checked onchange="toggleFilter('tee', this.checked)">
-      tee
-    </label>
+  <div id="assignment-toggles">
+    <button id="btn-add-mode" class="toggle-btn active">+ Add</button>
+    <button id="btn-remove-mode" class="toggle-btn">- Remove</button>
   </div>
 
-  <div class="section-label">Features</div>
+  <div class="section-label">Assigned to this hole</div>
   <div id="feature-list"></div>
 
   <div id="controls">
-    <button id="btn-save">Save &amp; Close</button>
+    <button id="btn-split-mode">Split Mode</button>
+    <button id="btn-undo" disabled>Undo</button>
+    <button id="btn-submit">Submit</button>
+    <div id="review-actions" class="hidden">
+      <button id="btn-back">Back</button>
+      <button id="btn-confirm">Confirm?</button>
+    </div>
   </div>
 </div>
 
@@ -389,24 +441,40 @@
 
   const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
 
-  let featureAssignments = {};
-  const activeFilters = new Set(['fairway','green','bunker','water','waterway','path','tee']);
-  let allFeatures = [];
+  let featureAssignments = new Map();
 
-  function toggleFilter(type, visible) {
-    visible ? activeFilters.add(type) : activeFilters.delete(type);
-    Object.entries(layers).forEach(([id, layer]) => {
-      if (layer.feature && layer.feature.properties.type === type) {
-        const isAssigned = !!featureAssignments[id];
-        if (visible && !isAssigned) {
-          map.addLayer(layer);
-        } else {
-          map.removeLayer(layer);
-        }
-      }
-    });
-    renderFeatureList(allFeatures);
+  function _ensureSet(id) {
+    if (!featureAssignments.has(id)) {
+      featureAssignments.set(id, new Set());
+    }
+    return featureAssignments.get(id);
   }
+
+  let allFeatures = [];
+  let splitModeActive = false;
+  let reviewMode = false;
+  let confirmedSaveAnyway = false;
+  let assignmentMode = 'add'; // 'add' | 'remove'
+  const layers = {};
+  const undoStack = [];
+  const splitMarkers = [];
+  const splitLineLayers = [];
+
+  let shiftDragActive = false;
+  let shiftDragStart = null;
+  let shiftDragRect = null;
+
+  document.getElementById('btn-add-mode').onclick = () => {
+    assignmentMode = 'add';
+    document.getElementById('btn-add-mode').classList.add('active');
+    document.getElementById('btn-remove-mode').classList.remove('active');
+  };
+
+  document.getElementById('btn-remove-mode').onclick = () => {
+    assignmentMode = 'remove';
+    document.getElementById('btn-remove-mode').classList.add('active');
+    document.getElementById('btn-add-mode').classList.remove('active');
+  };
 
   let currentHole = 1;
 
@@ -415,6 +483,8 @@
     const el = document.getElementById('current-hole');
     el.textContent = hole >= 1 && hole <= 18 ? hole : '—';
     el.classList.toggle('invalid', hole < 1 || hole > 18);
+    refreshFeatureStyles();
+    renderFeatureList(allFeatures);
   }
 
   document.getElementById('btn-prev-hole').onclick = () => {
@@ -426,7 +496,415 @@
 
   setCurrentHole(1);
 
-  const layers = {};
+  document.getElementById('btn-split-mode').onclick = () => {
+    splitModeActive = !splitModeActive;
+    const btn = document.getElementById('btn-split-mode');
+    if (splitModeActive) {
+      btn.textContent = '\u2715 Exit Split';
+      btn.className = 'active';
+      map.getContainer().style.cursor = 'crosshair';
+    } else {
+      btn.textContent = 'Split Mode';
+      btn.className = '';
+      map.getContainer().style.cursor = '';
+      clearSplitMarkers();
+      refreshFeatures();
+    }
+  };
+
+  function clearSplitMarkers() {
+    splitMarkers.forEach(m => map.removeLayer(m));
+    splitMarkers.length = 0;
+    splitLineLayers.forEach(l => map.removeLayer(l));
+    splitLineLayers.length = 0;
+  }
+
+  function refreshUndoButton() {
+    document.getElementById('btn-undo').disabled = undoStack.length === 0;
+  }
+
+  document.getElementById('btn-submit').onclick = () => {
+    enterReview();
+  };
+
+  document.getElementById('btn-back').onclick = () => {
+    exitReview();
+  };
+
+  function addSplitLine(p1, p2) {
+    fetch('/api/splits', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify([[p1.lat, p1.lng], [p2.lat, p2.lng]]),
+    }).then(r => r.json()).then(data => {
+      if (data.split_id) {
+        undoStack.push({type: 'split', splitId: data.split_id});
+        refreshUndoButton();
+
+        const line = L.polyline([p1, p2], {
+          color: '#e53935', weight: 2, dashArray: '8 4',
+          interactive: false,
+        }).addTo(map);
+        splitLineLayers.push(line);
+
+        // Clear assignments for affected (now-split) features
+        (data.affected || []).forEach(affectedId => {
+          featureAssignments.forEach((holes, key) => {
+            if (key.startsWith(affectedId)) {
+              featureAssignments.delete(key);
+            }
+          });
+        });
+        refreshFeatures();
+      }
+    });
+  }
+
+  function refreshFeatureStyles() {
+    Object.entries(layers).forEach(([id, layer]) => {
+      if (!layer || !layer.feature) return;
+      const ftype = layer.feature.properties.type;
+      const baseColor = typeColours[ftype] || '#888';
+      const holes = featureAssignments.get(id);
+      if (holes && holes.has(currentHole)) {
+        layer.setStyle({color: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim(), weight: 3});
+      } else {
+        layer.setStyle({color: baseColor, weight: 2});
+      }
+    });
+  }
+
+  function enterReview() {
+    reviewMode = true;
+    confirmedSaveAnyway = false;
+    document.getElementById('btn-submit').classList.add('hidden');
+    document.getElementById('review-actions').classList.remove('hidden');
+    document.getElementById('btn-split-mode').classList.add('review-mode-dimmed');
+    document.getElementById('btn-undo').classList.add('review-mode-dimmed');
+    document.getElementById('btn-add-mode').classList.add('review-mode-dimmed');
+    document.getElementById('btn-remove-mode').classList.add('review-mode-dimmed');
+    document.getElementById('hole-selector').classList.add('review-mode-dimmed');
+
+    const incomplete = [];
+    for (let h = 1; h <= 18; h++) {
+      let hasGreen = false;
+      featureAssignments.forEach((holes, id) => {
+        if (!holes.has(h)) return;
+        const f = allFeatures.find(f => f.properties.osm_id === id);
+        if (!f) return;
+        if (f.properties.type === 'green') hasGreen = true;
+      });
+      if (!hasGreen) incomplete.push({hole: h, missing: ['green']});
+    }
+
+    let info = document.getElementById('review-info');
+    if (!info) {
+      info = document.createElement('div');
+      info.id = 'review-info';
+      const featureList = document.getElementById('feature-list');
+      featureList.parentNode.insertBefore(info, featureList);
+    }
+    const confirmBtn = document.getElementById('btn-confirm');
+
+    if (incomplete.length) {
+      const lines = incomplete.map(h => 'Hole ' + h.hole + ': missing green');
+      info.innerHTML = '<strong>Incomplete holes</strong><br>' + lines.join('<br>');
+      info.style.background = 'oklch(18% 0.06 25)';
+      info.style.border = '1px solid oklch(64% 0.20 25)';
+      const strong = info.querySelector('strong');
+      if (strong) strong.style.color = 'oklch(64% 0.20 25)';
+      confirmBtn.textContent = 'Save Anyway';
+      confirmBtn.style.background = 'oklch(64% 0.20 25)';
+    } else {
+      info.innerHTML = '<strong>Review mode</strong><br>All assigned features are highlighted on the map.';
+      info.style.background = 'oklch(18% 0.06 240)';
+      info.style.border = '1px solid oklch(48% 0.16 240)';
+      const strong = info.querySelector('strong');
+      if (strong) strong.style.color = 'oklch(48% 0.16 240)';
+      confirmBtn.textContent = 'Confirm?';
+      confirmBtn.style.background = 'oklch(48% 0.16 240)';
+    }
+    info.classList.remove('hidden');
+
+    featureAssignments.forEach((holes, id) => {
+      const layer = layers[id];
+      if (!layer || holes.size === 0) return;
+      const ftype = layer.feature ? layer.feature.properties.type : null;
+      const isCourseWide = ftype === 'water' || ftype === 'waterway' || ftype === 'path';
+      if (isCourseWide) return;
+      layer.setStyle({color: 'oklch(48% 0.16 240)', weight: 3});
+    });
+  }
+
+  function exitReview() {
+    reviewMode = false;
+    confirmedSaveAnyway = false;
+    document.getElementById('btn-submit').classList.remove('hidden');
+    document.getElementById('review-actions').classList.add('hidden');
+    document.getElementById('btn-split-mode').classList.remove('review-mode-dimmed');
+    document.getElementById('btn-undo').classList.remove('review-mode-dimmed');
+    document.getElementById('btn-add-mode').classList.remove('review-mode-dimmed');
+    document.getElementById('btn-remove-mode').classList.remove('review-mode-dimmed');
+    document.getElementById('hole-selector').classList.remove('review-mode-dimmed');
+    const info = document.getElementById('review-info');
+    if (info) info.classList.add('hidden');
+    refreshFeatureStyles();
+  }
+
+  function refreshFeatures() {
+    fetch('/api/features')
+      .then(r => r.json())
+      .then(data => {
+        Object.values(layers).forEach(l => map.removeLayer(l));
+        Object.keys(layers).forEach(k => delete layers[k]);
+        const geojsonLayer = L.geoJSON(data, {
+          style: feature => {
+            const ftype = feature.properties.type;
+            const courseWide = ftype === 'water' || ftype === 'waterway' || ftype === 'path';
+            return {
+              color: typeColours[ftype] || '#888',
+              fillColor: typeColours[ftype] || '#888',
+              fillOpacity: 0.4,
+              weight: 2,
+              interactive: !courseWide && !splitModeActive,
+            };
+          },
+          pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
+            radius: 6,
+            fillColor: typeColours[feature.properties.type] || '#888',
+            color: '#000', weight: 1, fillOpacity: 0.8,
+          }),
+          onEachFeature: (feature, layer) => {
+            const id = feature.properties.osm_id;
+            const ftype = feature.properties.type;
+            if (ftype === 'unclassified') return;
+            layers[id] = layer;
+            layer.on('click', e => {
+              if (splitModeActive) return;
+              if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;
+              if (assignmentMode === 'add') {
+                if (featureAssignments.get(id)?.has(currentHole)) return;
+                undoStack.push({type: 'assign', id: id, hole: currentHole});
+                _ensureSet(id).add(currentHole);
+                renderFeatureList(allFeatures);
+                refreshUndoButton();
+                refreshFeatureStyles();
+              } else {
+                if (featureAssignments.has(id) && featureAssignments.get(id).has(currentHole)) {
+                  undoStack.push({type: 'unassign', id: id, hole: currentHole});
+                  featureAssignments.get(id).delete(currentHole);
+                  if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
+                  renderFeatureList(allFeatures);
+                  refreshUndoButton();
+                  refreshFeatureStyles();
+                }
+              }
+            });
+          },
+        }).addTo(map);
+        allFeatures = data.features;
+        renderFeatureList(allFeatures);
+        fetch('/api/splits')
+          .then(r => r.json())
+          .then(data => {
+            clearSplitMarkers();
+            (data.features || []).forEach(f => {
+              const coords = f.geometry.coordinates;
+              const line = L.polyline([[coords[0][1], coords[0][0]], [coords[1][1], coords[1][0]]], {
+                color: '#e53935', weight: 2, dashArray: '8 4',
+                interactive: false,
+              }).addTo(map);
+              splitLineLayers.push(line);
+            });
+          });
+
+        refreshFeatureStyles();
+
+      });
+  }
+
+  map.on('click', e => {
+    if (reviewMode) return;
+    if (!splitModeActive) return;
+
+    if (splitMarkers.length >= 2) {
+      clearSplitMarkers();
+    }
+
+    const marker = L.marker(e.latlng, {
+      draggable: true,
+      icon: L.divIcon({
+        className: '',
+        html: '<div style="background:#e53935;width:12px;height:12px;border-radius:50%;border:2px solid white;cursor:pointer;"></div>',
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+      }),
+    }).addTo(map);
+
+    marker.on('dragend', () => {
+      if (splitMarkers.length === 2) {
+        const p1 = splitMarkers[0].getLatLng();
+        const p2 = splitMarkers[1].getLatLng();
+        clearSplitMarkers();
+        addSplitLine(p1, p2);
+      }
+    });
+
+    marker.on('contextmenu', e => {
+      L.DomEvent.stopPropagation(e);
+      clearSplitMarkers();
+    });
+
+    splitMarkers.push(marker);
+
+    if (splitMarkers.length === 2) {
+      addSplitLine(splitMarkers[0].getLatLng(), splitMarkers[1].getLatLng());
+    }
+  });
+
+  map.on('mousedown', e => {
+    if (!e.originalEvent.ctrlKey) return;
+    if (splitModeActive || reviewMode) return;
+    L.DomEvent.stopPropagation(e);
+    L.DomEvent.preventDefault(e);
+    map.dragging.disable();
+    shiftDragActive = true;
+    shiftDragStart = e.latlng;
+    if (shiftDragRect) { map.removeLayer(shiftDragRect); }
+    shiftDragRect = L.rectangle([e.latlng, e.latlng], {
+      color: 'oklch(48% 0.16 240)',
+      weight: 2,
+      dashArray: '6 3',
+      fillColor: 'oklch(48% 0.16 240)',
+      fillOpacity: 0.1,
+      interactive: false,
+    }).addTo(map);
+  });
+
+  map.on('mousemove', e => {
+    if (!shiftDragActive) return;
+    if (!e.originalEvent.ctrlKey) {
+      cancelShiftDrag();
+      return;
+    }
+    if (shiftDragRect && shiftDragStart) {
+      shiftDragRect.setBounds(L.latLngBounds(shiftDragStart, e.latlng));
+    }
+  });
+
+  map.on('mouseup', e => {
+    if (!shiftDragActive) return;
+    shiftDragActive = false;
+    if (!shiftDragRect || !shiftDragStart) return;
+
+    const dragBounds = L.latLngBounds(shiftDragStart, e.latlng);
+    const affected = [];
+
+    const sw = dragBounds.getSouthWest();
+    const ne = dragBounds.getNorthEast();
+    const dragPolygon = turf.polygon([[
+      [sw.lng, sw.lat], [ne.lng, sw.lat],
+      [ne.lng, ne.lat], [sw.lng, ne.lat],
+      [sw.lng, sw.lat],
+    ]]);
+
+    Object.entries(layers).forEach(([id, layer]) => {
+      if (!layer.feature) return;
+      const ftype = layer.feature.properties.type;
+      if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;
+      if (turf.booleanIntersects(layer.feature, dragPolygon)) {
+        affected.push({id, layer});
+      }
+    });
+
+    const undoIds = [];
+
+    affected.forEach(({id}) => {
+      if (assignmentMode === 'add') {
+        if (featureAssignments.get(id)?.has(currentHole)) return;
+        _ensureSet(id).add(currentHole);
+        undoIds.push(id);
+      } else {
+        if (!featureAssignments.has(id) || !featureAssignments.get(id).has(currentHole)) return;
+        featureAssignments.get(id).delete(currentHole);
+        if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
+        undoIds.push(id);
+      }
+    });
+
+    if (undoIds.length > 0) {
+      undoStack.push({type: 'multi', mode: assignmentMode, ids: undoIds, hole: currentHole});
+    }
+
+    cancelShiftDrag();
+    renderFeatureList(allFeatures);
+    refreshUndoButton();
+    refreshFeatureStyles();
+  });
+
+  function cancelShiftDrag() {
+    shiftDragActive = false;
+    shiftDragStart = null;
+    if (shiftDragRect) {
+      map.removeLayer(shiftDragRect);
+      shiftDragRect = null;
+    }
+    map.dragging.enable();
+  }
+
+  document.getElementById('btn-undo').onclick = () => {
+    if (undoStack.length === 0) return;
+    const action = undoStack.pop();
+    if (action.type === 'split') {
+      fetch(`/api/splits/${action.splitId}`, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+          if (data.status === 'ok') {
+            refreshUndoButton();
+            refreshFeatures();
+          }
+        });
+    } else if (action.type === 'assign') {
+      const hole = action.hole || currentHole;
+      featureAssignments.get(action.id)?.delete(hole);
+      if (featureAssignments.get(action.id)?.size === 0) featureAssignments.delete(action.id);
+      renderFeatureList(allFeatures);
+      refreshUndoButton();
+      refreshFeatureStyles();
+    } else if (action.type === 'unassign') {
+      const hole = action.hole || currentHole;
+      _ensureSet(action.id).add(hole);
+      renderFeatureList(allFeatures);
+      refreshUndoButton();
+      refreshFeatureStyles();
+    } else if (action.type === 'multi') {
+      const hole = action.hole || currentHole;
+      if (action.mode === 'add') {
+        action.ids.forEach(id => {
+          featureAssignments.get(id)?.delete(hole);
+          if (featureAssignments.get(id)?.size === 0) featureAssignments.delete(id);
+        });
+      } else {
+        action.ids.forEach(id => _ensureSet(id).add(hole));
+      }
+      renderFeatureList(allFeatures);
+      refreshUndoButton();
+      refreshFeatureStyles();
+    }
+  };
+
+  // Load existing assignments from saved data (survives page reload)
+  fetch('/api/assignments')
+    .then(r => r.json())
+    .then(assignments => {
+      Object.entries(assignments).forEach(([id, hole]) => {
+        if (typeof hole === 'number') {
+          _ensureSet(id).add(hole);
+        }
+      });
+      renderFeatureList(allFeatures);
+      refreshFeatureStyles();
+    });
 
   fetch('/api/features')
     .then(r => r.json())
@@ -436,7 +914,7 @@
       (data.features || []).forEach(f => {
         const hole = f.properties.hole;
         if (hole && hole >= 1 && hole <= 18) {
-          featureAssignments[f.properties.osm_id] = hole;
+          _ensureSet(f.properties.osm_id).add(hole);
         }
       });
 
@@ -472,29 +950,31 @@
           }
           layers[id] = layer;
           layer.on('click', e => {
+            if (splitModeActive) return;
             const ftype = feature.properties.type;
-            if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;  // course-wide, not per-hole
-
-            if (featureAssignments[id]) {
-              delete featureAssignments[id];
-              map.addLayer(layer);
+            if (ftype === 'water' || ftype === 'waterway' || ftype === 'path') return;
+            if (assignmentMode === 'add') {
+              if (featureAssignments.get(id)?.has(currentHole)) return;
+              undoStack.push({type: 'assign', id: id, hole: currentHole});
+              _ensureSet(id).add(currentHole);
               renderFeatureList(allFeatures);
-              return;
-            }
-            if (currentHole >= 1 && currentHole <= 18) {
-              featureAssignments[id] = currentHole;
-              map.removeLayer(layer);
-              renderFeatureList(allFeatures);
+              refreshUndoButton();
+              refreshFeatureStyles();
+            } else {
+              if (featureAssignments.has(id) && featureAssignments.get(id).has(currentHole)) {
+                undoStack.push({type: 'unassign', id: id, hole: currentHole});
+                featureAssignments.get(id).delete(currentHole);
+                if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
+                renderFeatureList(allFeatures);
+                refreshUndoButton();
+                refreshFeatureStyles();
+              }
             }
           });
         }
       }).addTo(map);
 
-      Object.entries(featureAssignments).forEach(([id]) => {
-        if (layers[id]) {
-          map.removeLayer(layers[id]);
-        }
-      });
+      refreshFeatureStyles();
       allFeatures = data.features;
       renderFeatureList(allFeatures);
     });
@@ -505,44 +985,44 @@
     features.forEach(f => {
       const id = f.properties.osm_id;
       const type = f.properties.type;
-      if (!activeFilters.has(type)) return;
-      const hole = featureAssignments[id];
-      const div = document.createElement('div');
       const isCourseWide = (type === 'water' || type === 'waterway' || type === 'path');
-      if (isCourseWide) return;  // auto-injected to all holes — don't clutter the list
+      if (isCourseWide) return;
+      const isAssigned = featureAssignments.has(id) && featureAssignments.get(id).has(currentHole);
+      if (!isAssigned) return;
 
-      div.className = 'feature-item' + (hole ? ' assigned' : '');
-      
-      const holeBadge = hole ? `<span class="hole-badge">H${hole}</span>` : '';
+      const div = document.createElement('div');
+      div.className = 'feature-item';
+
+      let label = type;
+      if (f.properties.split_group) {
+        const idx = id.split('__')[1];
+        if (idx !== undefined) {
+          label = type + ' (' + String.fromCharCode(65 + parseInt(idx)) + ')';
+        }
+      }
 
       div.innerHTML = `
-        ${holeBadge}
-        <span class="type-badge type-${type}">${type}</span>
+        <span class="type-badge type-${type}">${label}</span>
         <span class="feature-meta">#${id}</span>
       `;
 
       div.onclick = () => {
-          if (hole) {
-            delete featureAssignments[id];
-            if (layers[id]) map.addLayer(layers[id]);
-            renderFeatureList(allFeatures);
-          } else {
-            if (currentHole >= 1 && currentHole <= 18) {
-              featureAssignments[id] = currentHole;
-              if (layers[id]) map.removeLayer(layers[id]);
-              renderFeatureList(allFeatures);
-            }
-            if (layers[id]) {
-              map.setView(layers[id].getBounds ? layers[id].getBounds().getCenter() : layers[id].getLatLng(), 18);
-            }
-          }
-        };
+        if (reviewMode) return;
+        if (assignmentMode === 'add') return;
+        if (!featureAssignments.has(id) || !featureAssignments.get(id).has(currentHole)) return;
+        undoStack.push({type: 'unassign', id: id, hole: currentHole});
+        featureAssignments.get(id).delete(currentHole);
+        if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
+        renderFeatureList(allFeatures);
+        refreshUndoButton();
+        refreshFeatureStyles();
+      };
       list.appendChild(div);
     });
   }
 
 
-  document.getElementById('btn-save').onclick = () => {
+  document.getElementById('btn-confirm').onclick = () => {
     const holes = {};
     for (let h = 1; h <= 18; h++) {
       holes[String(h)] = {fairway:[], green:[], bunkers:[], tee_boxes:{}, water:[], waterways:[], paths:[], rough_boundary:[]};
@@ -552,42 +1032,46 @@
         const id = f.properties.osm_id;
         const geom = f.geometry;
         const type = f.properties.type;
-        const hole = featureAssignments[id];
+        const holesSet = featureAssignments.get(id);
 
-        // Water and paths are course-wide — auto-distribute to all 18 holes
+        // Water and paths are course-wide -- auto-distribute to all 18 holes
         if (type === 'water' || type === 'waterway' || type === 'path') {
           const targetHoles = Object.keys(holes);
           if (geom.type === 'Polygon' && type === 'water') {
             const ring = geom.coordinates[0].map(c => [c[1], c[0]]);
-            targetHoles.forEach(hk => holes[hk].water.push(ring));
+            targetHoles.forEach(hk => holes[hk].water.push({"id": id, "rings": ring}));
           } else if (geom.type === 'LineString' && type === 'waterway') {
             const line = geom.coordinates.map(c => [c[1], c[0]]);
-            targetHoles.forEach(hk => holes[hk].waterways.push(line));
+            targetHoles.forEach(hk => holes[hk].waterways.push({"id": id, "rings": line}));
           } else if (geom.type === 'LineString' && type === 'path') {
             const line = geom.coordinates.map(c => [c[1], c[0]]);
-            targetHoles.forEach(hk => holes[hk].paths.push(line));
+            targetHoles.forEach(hk => holes[hk].paths.push({"id": id, "rings": line}));
           }
           return;
         }
 
-        if (!hole) return;
-        const hk = String(hole);
-        if (geom.type === 'Point') {
-          const teeColour = f.properties.tags?.colour || f.properties.tags?.color || 'white';
-          holes[hk].tee_boxes[teeColour] = [geom.coordinates[1], geom.coordinates[0]];
-        } else if (geom.type === 'Polygon') {
-          const ring = geom.coordinates[0].map(c => [c[1], c[0]]);
-          if (type === 'fairway') holes[hk].fairway.push(ring);
-          else if (type === 'green') holes[hk].green.push(ring);
-          else if (type === 'bunker') holes[hk].bunkers.push(ring);
-          else if (type === 'water') holes[hk].water.push(ring);
-          else if (type === 'rough') holes[hk].rough_boundary.push(ring);
-          else if (type === 'tee') holes[hk].rough_boundary.push(ring);
-        } else if (geom.type === 'LineString') {
-          const line = geom.coordinates.map(c => [c[1], c[0]]);
-          if (type === 'path') holes[hk].paths.push(line);
-          else if (type === 'waterway') holes[hk].waterways.push(line);
-        }
+        if (!holesSet || holesSet.size === 0) return;
+        holesSet.forEach(hole => {
+          const hk = String(hole);
+          if (geom.type === 'Point') {
+            const teeColour = f.properties.tags?.colour || f.properties.tags?.color || 'white';
+            holes[hk].tee_boxes[teeColour] = [geom.coordinates[1], geom.coordinates[0]];
+          } else if (geom.type === 'Polygon') {
+            const ring = geom.coordinates[0].map(c => [c[1], c[0]]);
+            const item = {"id": id, "rings": ring};
+            if (type === 'fairway') holes[hk].fairway.push(item);
+            else if (type === 'green') holes[hk].green.push(item);
+            else if (type === 'bunker') holes[hk].bunkers.push(item);
+            else if (type === 'water') holes[hk].water.push(item);
+            else if (type === 'rough') holes[hk].rough_boundary.push(item);
+            else if (type === 'tee') holes[hk].rough_boundary.push(item);
+          } else if (geom.type === 'LineString') {
+            const line = geom.coordinates.map(c => [c[1], c[0]]);
+            const item = {"id": id, "rings": line};
+            if (type === 'path') holes[hk].paths.push(item);
+            else if (type === 'waterway') holes[hk].waterways.push(item);
+          }
+        });
       });
 
       fetch('/api/save', {

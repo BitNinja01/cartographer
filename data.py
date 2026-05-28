@@ -33,12 +33,65 @@ def get_osm_path(course_name: str) -> Path:
     return osm_dir / f"{course_name}.osm"
 
 
-def load_courses_geo() -> dict:
-    """Load courses_geo.json. Returns empty dict if file doesn't exist."""
+def _read_raw() -> dict:
+    """Read courses_geo.json as-is. Returns empty dict if file doesn't exist."""
     path = _get_plugin_data_dir() / "courses_geo.json"
     if not path.exists():
         return {}
     return json.loads(path.read_text())
+
+
+def load_courses_geo_raw() -> dict:
+    """Read courses_geo.json with all metadata preserved (IDs, splits).
+    
+    Used by the tagger server for assignment reconstruction and
+    the save/load cycle. Returns the raw JSON dict including feature
+    IDs and split lines.
+    """
+    return _read_raw()
+
+
+def _normalize_hole_features(hole_data: dict) -> dict:
+    """Normalize per-hole feature data to bare ring lists.
+
+    Handles both old format (bare [[[lat,lon],...]] rings) and new
+    format ([{"id":"...", "rings":[[...]]}, ...]).
+    Only normalizes keys that exist in the input data.
+    """
+    feature_list_types = {"fairway", "green", "bunkers", "water",
+                          "waterways", "paths", "rough_boundary"}
+    normalized = {}
+    for key, items in hole_data.items():
+        if key in feature_list_types:
+            if not items:
+                normalized[key] = []
+            elif isinstance(items[0], dict) and "rings" in items[0]:
+                normalized[key] = [item["rings"] for item in items]
+            else:
+                normalized[key] = items
+        else:
+            normalized[key] = items
+    return normalized
+
+
+def load_courses_geo() -> dict:
+    """Load courses_geo.json, normalized to bare ring lists.
+
+    Old-format data (bare [[[lat,lon]]] rings) passes through unchanged.
+    New-format data ([{"id":"...","rings":[[...]]}]) has rings extracted
+    and IDs discarded. Returns a dict suitable for geometry/render/PDF.
+    """
+    raw = _read_raw()
+    normalized = {}
+    for course_name, course_data in raw.items():
+        norm = dict(course_data)
+        if "holes" in norm:
+            norm["holes"] = {
+                hk: _normalize_hole_features(hd)
+                for hk, hd in norm["holes"].items()
+            }
+        normalized[course_name] = norm
+    return normalized
 
 
 def save_courses_geo(data: dict) -> None:

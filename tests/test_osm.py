@@ -154,3 +154,76 @@ class TestNodesToRing:
 
     def test_empty_coords_dict(self):
         assert _nodes_to_ring(["n1", "n2"], {}) == []
+
+
+# ---------------------------------------------------------------------------
+# _expand_split_features
+# ---------------------------------------------------------------------------
+
+from cartographer.tagger.server import _expand_split_features
+
+
+class TestExpandSplitFeatures:
+    """_expand_split_features — synthetic ID generation."""
+
+    def _make_feature(self, osm_id, ftype, coords, split_pieces=None):
+        feat = {
+            "osm_id": osm_id,
+            "type": ftype,
+            "geometry": coords,
+            "is_point": False,
+            "tags": {},
+        }
+        if split_pieces:
+            feat["_split_pieces"] = split_pieces
+        return feat
+
+    def test_no_splits_passthrough(self):
+        features = [
+            self._make_feature("way/1", "fairway", [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]),
+        ]
+        result = _expand_split_features(features)
+        assert len(result) == 1
+        assert result[0]["osm_id"] == "way/1"
+
+    def test_split_produces_two_sub_features(self):
+        features = [
+            self._make_feature("way/1", "green", [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]],
+                               split_pieces=[
+                                   [[[0, 0], [5, 0], [5, 10], [0, 10], [0, 0]]],
+                                   [[[5, 0], [10, 0], [10, 10], [5, 10], [5, 0]]],
+                               ]),
+        ]
+        result = _expand_split_features(features)
+        assert len(result) == 2
+        assert result[0]["osm_id"] == "way/1__0"
+        assert result[1]["osm_id"] == "way/1__1"
+        assert result[0]["split_group"] == "way/1"
+        assert result[1]["split_group"] == "way/1"
+        assert "_split_pieces" not in result[0]
+
+    def test_mixed_split_and_unsplit(self):
+        features = [
+            self._make_feature("way/1", "fairway", [[0, 0], [10, 0], [10, 10]]),
+            self._make_feature("way/2", "green", [[20, 20], [30, 20], [30, 30]],
+                               split_pieces=[
+                                   [[[20, 20], [25, 20], [25, 30]]],
+                                   [[[25, 20], [30, 20], [30, 30]]],
+                               ]),
+        ]
+        result = _expand_split_features(features)
+        assert len(result) == 3
+        ids = {f["osm_id"] for f in result}
+        assert ids == {"way/1", "way/2__0", "way/2__1"}
+
+    def test_preserves_feature_type(self):
+        features = [
+            self._make_feature("way/1", "bunker", [[0, 0], [10, 10]],
+                               split_pieces=[
+                                   [[[0, 0], [5, 5]]],
+                                   [[[5, 5], [10, 10]]],
+                               ]),
+        ]
+        result = _expand_split_features(features)
+        assert result[0]["type"] == "bunker"
+        assert result[1]["type"] == "bunker"
