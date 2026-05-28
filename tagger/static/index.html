@@ -732,6 +732,7 @@
     if (splitModeActive || reviewMode) return;
     L.DomEvent.stopPropagation(e);
     L.DomEvent.preventDefault(e);
+    map.dragging.disable();
     shiftDragActive = true;
     shiftDragStart = e.latlng;
     if (shiftDragRect) { map.removeLayer(shiftDragRect); }
@@ -801,6 +802,7 @@
       map.removeLayer(shiftDragRect);
       shiftDragRect = null;
     }
+    map.dragging.enable();
   }
 
   document.getElementById('btn-undo').onclick = () => {
