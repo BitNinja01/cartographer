@@ -776,18 +776,24 @@
       }
     });
 
+    const undoIds = [];
+
     affected.forEach(({id}) => {
       if (assignmentMode === 'add') {
         if (featureAssignments.get(id)?.has(currentHole)) return;
-        undoStack.push({type: 'assign', id, hole: currentHole});
         _ensureSet(id).add(currentHole);
+        undoIds.push(id);
       } else {
         if (!featureAssignments.has(id) || !featureAssignments.get(id).has(currentHole)) return;
-        undoStack.push({type: 'unassign', id, hole: currentHole});
         featureAssignments.get(id).delete(currentHole);
         if (featureAssignments.get(id).size === 0) featureAssignments.delete(id);
+        undoIds.push(id);
       }
     });
+
+    if (undoIds.length > 0) {
+      undoStack.push({type: 'multi', mode: assignmentMode, ids: undoIds, hole: currentHole});
+    }
 
     cancelShiftDrag();
     renderFeatureList(allFeatures);
@@ -827,6 +833,19 @@
     } else if (action.type === 'unassign') {
       const hole = action.hole || currentHole;
       _ensureSet(action.id).add(hole);
+      renderFeatureList(allFeatures);
+      refreshUndoButton();
+      refreshFeatureStyles();
+    } else if (action.type === 'multi') {
+      const hole = action.hole || currentHole;
+      if (action.mode === 'add') {
+        action.ids.forEach(id => {
+          featureAssignments.get(id)?.delete(hole);
+          if (featureAssignments.get(id)?.size === 0) featureAssignments.delete(id);
+        });
+      } else {
+        action.ids.forEach(id => _ensureSet(id).add(hole));
+      }
       renderFeatureList(allFeatures);
       refreshUndoButton();
       refreshFeatureStyles();
