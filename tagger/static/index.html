@@ -728,7 +728,7 @@
   });
 
   map.on('mousedown', e => {
-    if (!e.originalEvent.shiftKey) return;
+    if (!e.originalEvent.ctrlKey) return;
     if (splitModeActive || reviewMode) return;
     L.DomEvent.stopPropagation(e);
     L.DomEvent.preventDefault(e);
@@ -748,7 +748,7 @@
 
   map.on('mousemove', e => {
     if (!shiftDragActive) return;
-    if (!e.originalEvent.shiftKey) {
+    if (!e.originalEvent.ctrlKey) {
       cancelShiftDrag();
       return;
     }
